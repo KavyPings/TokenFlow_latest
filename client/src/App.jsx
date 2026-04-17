@@ -11,6 +11,7 @@ import LandingPage from './pages/LandingPage.jsx';
 import TestbenchPage from './pages/TestbenchPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import IncidentPage from './pages/IncidentPage.jsx';
+import FairnessPage from './pages/FairnessPage.jsx';
 
 /* ─── Interactive Particle Canvas ─── */
 function ParticleCanvas() {
@@ -92,6 +93,7 @@ const NAV_ITEMS = [
   { id: 'security', label: 'Security', msym: 'shield', badgeKey: 'alerts' },
   { id: 'testbench', label: 'Testbench', msym: 'science' },
   { id: 'upload', label: 'Upload', msym: 'upload_file' },
+  { id: 'fairness', label: 'Fairness', msym: 'balance' },
   { id: 'launch', label: 'Mock Launch', msym: 'play_arrow' },
   { id: 'incident', label: 'Incident', msym: 'gpp_bad' },
 ];
@@ -412,6 +414,7 @@ export default function App() {
             {page === 'launch' && <LaunchPage key="l" tasks={tasks} selectedTask={selectedTask} setSelectedTask={setSelectedTask} onStart={handleStart} busyAction={busyAction} />}
             {page === 'testbench' && <TestbenchPage key="tb" />}
             {page === 'upload' && <UploadPage key="up" setPage={setPage} onRunUploadedWorkflow={handleUploadedWorkflowRun} />}
+            {page === 'fairness' && <FairnessPage key="fair" />}
             {page === 'incident' && <IncidentPage key="inc" />}
           </motion.div>
         </AnimatePresence>

@@ -13,6 +13,7 @@ import vaultRoutes from './routes/vaultRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import testbenchRoutes from './routes/testbenchRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import fairnessRoutes from './routes/fairnessRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -53,7 +54,7 @@ app.use(cors({
 if (IS_PRODUCTION) {
   app.set('trust proxy', 1);
 }
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -71,6 +72,7 @@ app.use('/api/workflows', uploadRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/vault', vaultRoutes);
 app.use('/api/testbench', testbenchRoutes);
+app.use('/api/fairness', fairnessRoutes);
 
 if (existsSync(CLIENT_DIST_PATH)) {
   app.use(express.static(CLIENT_DIST_PATH));

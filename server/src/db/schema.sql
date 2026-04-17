@@ -95,6 +95,71 @@ CREATE TABLE IF NOT EXISTS uploaded_workflows (
 );
 
 -- ═══════════════════════════════════════════════════════════
+-- Fairness Audit — Uploaded Datasets
+-- ═══════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS fairness_datasets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_type TEXT NOT NULL CHECK(file_type IN ('csv', 'json')),
+  row_count INTEGER NOT NULL DEFAULT 0,
+  config TEXT NOT NULL DEFAULT '{}',
+  profile TEXT DEFAULT NULL,
+  data_blob TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'uploaded' CHECK(status IN ('uploaded','profiled','analyzed','error')),
+  error_message TEXT DEFAULT NULL,
+  uploaded_by TEXT DEFAULT 'system',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════
+-- Fairness Audit — Immutable Audit Logs
+-- ═══════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS fairness_audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dataset_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  details TEXT DEFAULT '{}',
+  config_snapshot TEXT DEFAULT NULL,
+  metrics_snapshot TEXT DEFAULT NULL,
+  actor TEXT DEFAULT 'system',
+  timestamp TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════
+-- Fairness Audit — Generated Reports
+-- ═══════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS fairness_reports (
+  id TEXT PRIMARY KEY,
+  dataset_id TEXT NOT NULL,
+  report TEXT NOT NULL,
+  risk_level TEXT NOT NULL CHECK(risk_level IN ('low','medium','high')),
+  violation_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════
+-- Fairness Audit — Review Queue (flagged violations)
+-- ═══════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS fairness_review_queue (
+  id TEXT PRIMARY KEY,
+  dataset_id TEXT NOT NULL,
+  report_id TEXT NOT NULL,
+  metric_name TEXT NOT NULL,
+  group_name TEXT NOT NULL,
+  attribute TEXT NOT NULL,
+  expected_range TEXT NOT NULL,
+  actual_value REAL NOT NULL,
+  severity TEXT NOT NULL CHECK(severity IN ('low','medium','high')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','acknowledged','resolved','dismissed')),
+  reviewer TEXT DEFAULT NULL,
+  review_notes TEXT DEFAULT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════
 -- Indexes
 -- ═══════════════════════════════════════════════════════════
 CREATE INDEX IF NOT EXISTS idx_tokens_workflow ON tokens(workflow_id);
@@ -103,3 +168,8 @@ CREATE INDEX IF NOT EXISTS idx_tokens_nonce ON tokens(nonce);
 CREATE INDEX IF NOT EXISTS idx_audit_workflow ON audit_log(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_audit_token ON audit_log(token_id);
 CREATE INDEX IF NOT EXISTS idx_test_runs_scenario ON test_runs(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_fairness_datasets_status ON fairness_datasets(status);
+CREATE INDEX IF NOT EXISTS idx_fairness_audit_logs_dataset ON fairness_audit_logs(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_fairness_reports_dataset ON fairness_reports(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_fairness_review_queue_dataset ON fairness_review_queue(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_fairness_review_queue_status ON fairness_review_queue(status);
