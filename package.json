@@ -1,0 +1,24 @@
+{
+  "name": "tokenflow-os",
+  "version": "1.0.0",
+  "description": "Capability-based execution runtime for AI agents — preventing credential misuse and over-permissioned access via tokenized execution",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "build": "npm run build --workspace=client",
+    "start": "node server/src/index.js",
+    "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
