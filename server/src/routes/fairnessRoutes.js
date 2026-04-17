@@ -79,23 +79,33 @@ router.post('/upload', upload.single('file'), (req, res) => {
     }
 
     // ── Parse file content ─────────────────────────────
-    const fileContent = req.file.buffer.toString('utf-8');
+    const fileContent = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, '');
     let rows;
 
     if (fileValidation.fileType === 'csv') {
       const parsed = parseCSV(fileContent, { maxRows: 1_000_000 });
       rows = parsed.rows;
     } else {
-      // JSON — expect array of objects
+      // JSON — accept either a top-level row array or a wrapped payload (e.g. { data: [...] }).
       try {
         const parsed = JSON.parse(fileContent);
-        if (!Array.isArray(parsed)) {
+        const extractedRows = extractRowsFromJsonPayload(parsed);
+        if (!Array.isArray(extractedRows)) {
           return res.status(400).json({
             error: 'INVALID_FILE',
-            details: ['JSON file must contain an array of objects'],
+            details: ['JSON must be either an array of row objects or an object containing a row array (e.g. "data", "rows", "records", or "items").'],
           });
         }
-        rows = parsed;
+        const hasInvalidRow = extractedRows.some(
+          (row) => !row || typeof row !== 'object' || Array.isArray(row)
+        );
+        if (hasInvalidRow) {
+          return res.status(400).json({
+            error: 'INVALID_FILE',
+            details: ['JSON row array must contain only objects'],
+          });
+        }
+        rows = extractedRows;
       } catch (e) {
         return res.status(400).json({
           error: 'INVALID_FILE',
@@ -449,6 +459,21 @@ function safeJsonParse(str, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function extractRowsFromJsonPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return null;
+
+  const preferredKeys = ['data', 'rows', 'records', 'items', 'results'];
+  for (const key of preferredKeys) {
+    if (Array.isArray(payload[key])) {
+      return payload[key];
+    }
+  }
+
+  const firstArrayValue = Object.values(payload).find((value) => Array.isArray(value));
+  return firstArrayValue || null;
 }
 
 export default router;

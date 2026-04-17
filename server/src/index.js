@@ -22,6 +22,7 @@ const CLIENT_DIST_PATH = resolve(__dirname, '..', '..', 'client', 'dist');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const LOCAL_DEV_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
 // Always include the Vercel frontend as an allowed origin.
 // FRONTEND_ORIGIN on Render can be set to add more (comma-separated).
@@ -41,6 +42,8 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow no-origin requests (health checks, server-to-server, curl, etc.)
     if (!origin) return callback(null, true);
+    // In development, always allow local frontend origins.
+    if (!IS_PRODUCTION && LOCAL_DEV_ORIGIN_REGEX.test(origin)) return callback(null, true);
     if (FRONTEND_ORIGINS.includes(origin)) return callback(null, true);
     // Allow all origins in production as a final fallback
     if (IS_PRODUCTION) return callback(null, true);

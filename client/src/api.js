@@ -1,4 +1,6 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://tokenflow-hazr.onrender.com').replace(/\/$/, '');
+// In local development, keep VITE_API_BASE_URL empty so Vite's /api proxy handles requests.
+// In production split deployments, set VITE_API_BASE_URL to your backend URL.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 function toUrl(path) {
   return `${API_BASE_URL}${path}`;
@@ -33,9 +35,12 @@ export async function api(path, options = {}) {
 }
 
 export function getWebSocketUrl() {
-  // Always derive WebSocket URL from the API base URL.
-  // On Vercel, VITE_API_BASE_URL points to Render, so this correctly
-  // produces wss://tokenflow-hazr.onrender.com/ws.
-  return API_BASE_URL.replace(/^http/i, 'ws') + '/ws';
+  if (API_BASE_URL) {
+    return API_BASE_URL.replace(/^http/i, 'ws') + '/ws';
+  }
+
+  // Same-origin fallback for local dev and single-host deployments.
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProtocol}//${window.location.host}/ws`;
 }
 

@@ -32,7 +32,9 @@ async function apiFetch(path, opts = {}) {
   const url = `${API_BASE}${path}`;
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || data.error || `Request failed: ${res.status}`);
+  if (!res.ok) {
+    throw new Error(formatApiError(data, res.status));
+  }
   return data;
 }
 
@@ -58,6 +60,42 @@ async function apiPatch(path, body) {
 
 async function apiUpload(path, formData) {
   return apiFetch(path, { method: 'POST', body: formData });
+}
+
+function formatApiError(data, status) {
+  if (!data || typeof data !== 'object') {
+    return `Request failed: ${status}`;
+  }
+
+  const parts = [];
+  const primary = typeof data.message === 'string' && data.message
+    ? data.message
+    : (typeof data.error === 'string' ? data.error : '');
+  if (primary) parts.push(primary);
+
+  if (Array.isArray(data.details) && data.details.length > 0) {
+    const details = data.details
+      .filter((d) => typeof d === 'string' && d.trim().length > 0)
+      .join(' | ');
+    if (details) parts.push(details);
+  } else if (typeof data.details === 'string' && data.details.trim()) {
+    parts.push(data.details.trim());
+  }
+
+  return parts.length > 0 ? parts.join(': ') : `Request failed: ${status}`;
+}
+
+function extractRowsFromJsonPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return [];
+
+  const preferredKeys = ['data', 'rows', 'records', 'items', 'results'];
+  for (const key of preferredKeys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+
+  const firstArrayValue = Object.values(payload).find((value) => Array.isArray(value));
+  return firstArrayValue || [];
 }
 
 // Parse one CSV row while respecting quoted fields and escaped quotes.
@@ -101,9 +139,14 @@ function buildFilePreview(fileName, text) {
   const lowerName = String(fileName || '').toLowerCase();
   if (lowerName.endsWith('.json')) {
     const parsed = JSON.parse(normalized);
-    if (!Array.isArray(parsed) || parsed.length === 0) return { headers: [], rows: [] };
-    const headers = Object.keys(parsed[0] || {});
-    return { headers, rows: parsed.slice(0, 5) };
+    const rows = extractRowsFromJsonPayload(parsed);
+    if (!Array.isArray(rows) || rows.length === 0) return { headers: [], rows: [] };
+    const firstRow = rows[0];
+    if (!firstRow || typeof firstRow !== 'object' || Array.isArray(firstRow)) {
+      return { headers: [], rows: [] };
+    }
+    const headers = Object.keys(firstRow);
+    return { headers, rows: rows.slice(0, 5) };
   }
 
   const lines = normalized.split(/\r?\n/).filter((l) => l.trim().length > 0);
