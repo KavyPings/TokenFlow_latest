@@ -152,12 +152,74 @@ CREATE TABLE IF NOT EXISTS fairness_review_queue (
   expected_range TEXT NOT NULL,
   actual_value REAL NOT NULL,
   severity TEXT NOT NULL CHECK(severity IN ('low','medium','high')),
+  policy_level TEXT NOT NULL DEFAULT 'warning' CHECK(policy_level IN ('warning','block')),
   status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','acknowledged','resolved','dismissed')),
   reviewer TEXT DEFAULT NULL,
   review_notes TEXT DEFAULT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+-- ═══════════════════════════════════════════════════════════
+-- Fairness Audit — Mitigation Reports
+-- ═══════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS fairness_mitigation_reports (
+  id TEXT PRIMARY KEY,
+  dataset_id TEXT NOT NULL,
+  report_id TEXT NOT NULL,
+  method TEXT NOT NULL DEFAULT 'threshold_adjustment',
+  config TEXT NOT NULL DEFAULT '{}',
+  before_metrics TEXT NOT NULL DEFAULT '{}',
+  after_metrics TEXT NOT NULL DEFAULT '{}',
+  deltas TEXT NOT NULL DEFAULT '{}',
+  impacted_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════
+-- Fairness Audit — Row-Level Impacted Cases
+-- ═══════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS fairness_impacted_cases (
+  id TEXT PRIMARY KEY,
+  dataset_id TEXT NOT NULL,
+  mitigation_id TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  original_pred INTEGER NOT NULL,
+  adjusted_pred INTEGER NOT NULL,
+  group_name TEXT NOT NULL,
+  attribute TEXT NOT NULL,
+  trigger_metric TEXT NOT NULL,
+  original_score REAL DEFAULT NULL,
+  adjusted_threshold REAL DEFAULT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════
+-- Fairness Audit — Gate Decisions (operational metrics)
+-- ═══════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS fairness_gate_decisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  allowed INTEGER NOT NULL,
+  mode TEXT NOT NULL CHECK(mode IN ('shadow','enforce')),
+  decision TEXT NOT NULL CHECK(decision IN ('ALLOW','BLOCK')),
+  message TEXT NOT NULL,
+  blocking_datasets TEXT DEFAULT '[]',
+  blocking_items TEXT DEFAULT '[]',
+  evaluation_ms REAL NOT NULL DEFAULT 0,
+  triggered_by TEXT DEFAULT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════
+-- Fairness Audit — Immutability Triggers
+-- ═══════════════════════════════════════════════════════════
+CREATE TRIGGER IF NOT EXISTS prevent_audit_log_update
+  BEFORE UPDATE ON fairness_audit_logs
+  BEGIN SELECT RAISE(ABORT, 'Fairness audit logs are immutable — UPDATE is not allowed'); END;
+
+CREATE TRIGGER IF NOT EXISTS prevent_audit_log_delete
+  BEFORE DELETE ON fairness_audit_logs
+  BEGIN SELECT RAISE(ABORT, 'Fairness audit logs are immutable — DELETE is not allowed'); END;
 
 -- ═══════════════════════════════════════════════════════════
 -- Indexes
@@ -173,3 +235,9 @@ CREATE INDEX IF NOT EXISTS idx_fairness_audit_logs_dataset ON fairness_audit_log
 CREATE INDEX IF NOT EXISTS idx_fairness_reports_dataset ON fairness_reports(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_fairness_review_queue_dataset ON fairness_review_queue(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_fairness_review_queue_status ON fairness_review_queue(status);
+CREATE INDEX IF NOT EXISTS idx_fairness_mitigation_reports_dataset ON fairness_mitigation_reports(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_fairness_impacted_cases_dataset ON fairness_impacted_cases(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_fairness_impacted_cases_group ON fairness_impacted_cases(group_name);
+CREATE INDEX IF NOT EXISTS idx_fairness_impacted_cases_mitigation ON fairness_impacted_cases(mitigation_id);
+CREATE INDEX IF NOT EXISTS idx_fairness_gate_decisions_created ON fairness_gate_decisions(created_at);
+

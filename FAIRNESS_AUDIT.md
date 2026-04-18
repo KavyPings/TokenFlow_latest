@@ -1,258 +1,394 @@
-# Fairness Audit System
+# Fairness Audit System — Technical Documentation
 
-A built-in tool for detecting bias in AI model predictions. Upload a dataset, click analyze, and instantly see which groups are being treated unfairly.
+## Overview
 
----
+TokenFlow OS includes a **deterministic fairness auditing system** that detects bias in model predictions, computes canonical fairness metrics, provides automated mitigation via threshold adjustment, and enforces a **non-configurable execution gate** that blocks mission-critical workflow launches when fairness state is unsafe.
 
-## How to Use (Step by Step)
-
-### Step 1: Open the Fairness Page
-
-1. Start the app: `npm run dev`
-2. Open `http://localhost:5173` in your browser
-3. Click **"FAIRNESS"** in the top navigation bar
-
-You'll see the Fairness Audit page with 4 tabs:
-- **Upload & Configure** — upload your data
-- **Analysis Results** — see the bias report
-- **Review Queue** — manage flagged violations
-- **Audit Trail** — see the history of actions
-
----
-
-### Step 2: Prepare Your Dataset
-
-Your dataset should be a **CSV** or **JSON** file with these columns:
-
-| Column | What it is | Example values |
-|--------|-----------|----------------|
-| **ID column** | Unique identifier for each row | `1`, `2`, `3`… |
-| **Actual outcome** | What actually happened (0 or 1) | `1` = qualified, `0` = not qualified |
-| **Predicted outcome** | What the model predicted (0 or 1) | `1` = approved, `0` = denied |
-| **Timestamp** | When the prediction was made | `2024-01-15` |
-| **Model version** | Which model made the prediction | `v1`, `v2` |
-| **Protected attribute(s)** | Sensitive demographics to check for bias | `male`/`female`, `white`/`black`/`asian` |
-| **Predicted score** (optional) | Model confidence 0–1 | `0.87` |
-
-#### Example CSV file:
-
-```csv
-id,gender,race,actual,predicted,score,date,model
-1,male,white,1,1,0.91,2024-01-01,v2
-2,female,black,1,0,0.42,2024-01-01,v2
-3,male,asian,0,0,0.15,2024-01-02,v2
-4,female,white,1,1,0.88,2024-01-02,v2
-```
-
----
-
-### Step 3: Upload Your Dataset
-
-1. Click the **"Upload & Configure"** tab
-2. Click the upload area and select your CSV/JSON file
-3. You'll see a **preview** of the first 5 rows — verify the data looks correct
-
----
-
-### Step 4: Configure the Schema
-
-After uploading, fill in the form fields:
-
-1. **Dataset Name** — Give it a descriptive name (e.g., "Q1 2024 Hiring Decisions")
-2. **Column Mappings** — Tell the system which column is which:
-   - **Record ID** → your ID column (e.g., `id`)
-   - **Target Outcome** → the actual/true label column (e.g., `actual`)
-   - **Predicted Outcome** → the model's prediction column (e.g., `predicted`)
-   - **Timestamp** → date column (e.g., `date`)
-   - **Model Version** → version column (e.g., `model`)
-   - **Predicted Score** → confidence score column, optional (e.g., `score`)
-
-> **Tip:** The system auto-detects common column names like `id`, `actual`, `predicted`, `score`, etc.
-
-3. **Protected Attributes** — Define which demographic columns to check for bias:
-   - **Column** → e.g., `gender`
-   - **Reference Group** → the majority/baseline group, e.g., `male`
-   - Click **"Add Attribute"** to check multiple demographics (e.g., both gender and race)
-
-4. Click **"Upload & Profile Dataset"**
-
----
-
-### Step 5: Run the Analysis
-
-1. After upload, you'll be switched to the **"Analysis Results"** tab
-2. Your dataset appears in the **left sidebar**
-3. Click **"Run Analysis"** in the sidebar panel
-4. Wait a few seconds — the system computes all fairness metrics
-
----
-
-### Step 6: Read the Results
-
-The analysis page shows:
-
-#### Risk Banner
-A colored banner at the top showing the overall risk level:
-- 🟢 **LOW** — No significant fairness issues
-- 🟡 **MEDIUM** — Some metrics are borderline
-- 🔴 **HIGH** — Significant bias detected, immediate review needed
-
-#### Group Metrics Table
-Shows per-group performance:
-- **Selection Rate** — What % of each group got approved
-- **TPR** (True Positive Rate) — How well the model identifies qualified people in each group
-- **FPR** (False Positive Rate) — How often unqualified people are mistakenly approved
-
-#### Fairness Metrics Table
-Shows cross-group comparisons:
-- **Statistical Parity Difference** — Difference in approval rates (should be close to 0)
-- **Disparate Impact Ratio** — Ratio of approval rates (should be between 0.8 and 1.25, per the "four-fifths rule")
-- **Equal Opportunity Difference** — Difference in true positive rates (should be close to 0)
-- **Average Odds Difference** — Average of TPR and FPR differences (should be close to 0)
-
-**Red values = violation detected.** Green values = within acceptable range.
-
-#### Violations List
-Each flagged violation shows:
-- Which metric was violated
-- Which group is affected
-- The severity (HIGH/MEDIUM)
-- What the actual value was
-
----
-
-### Step 7: Review Violations
-
-1. Click the **"Review Queue"** tab
-2. Each violation can be:
-   - **Acknowledged** — "We see this, we're investigating"
-   - **Resolved** — "We've fixed the underlying issue"
-   - **Dismissed** — "This is acceptable for our use case"
-
----
-
-### Step 8: Check the Audit Trail
-
-Click the **"Audit Trail"** tab to see a timeline of every action:
-- When the dataset was uploaded
-- When the analysis was run
-- When violations were reviewed
-- Who performed each action
-
-This is an **immutable log** — nothing can be deleted, which is important for compliance.
-
----
-
-## What the Metrics Mean (Plain English)
-
-| Metric | What it measures | Fair value | Example of unfairness |
-|--------|-----------------|------------|----------------------|
-| **Statistical Parity** | Do all groups get approved at the same rate? | ±0.1 | Men approved 80%, women only 50% |
-| **Disparate Impact** | Is the approval ratio between groups fair? | 0.8–1.25 | Female rate / male rate = 0.625 (below 0.8) |
-| **Equal Opportunity** | Among qualified people, are all groups approved equally? | ±0.1 | 90% of qualified men approved, but only 60% of qualified women |
-| **Average Odds** | Combining TPR and FPR differences | ±0.1 | Overall prediction accuracy differs by group |
-
----
-
-## Quick Test (Try It Now)
-
-To test the system immediately, create a file called `test_data.csv` with this content:
-
-```csv
-id,gender,actual,predicted,score,date,model
-1,male,1,1,0.95,2024-01-01,v1
-2,male,1,1,0.88,2024-01-01,v1
-3,male,0,0,0.12,2024-01-01,v1
-4,male,1,1,0.91,2024-01-01,v1
-5,male,0,0,0.08,2024-01-01,v1
-6,female,1,0,0.42,2024-01-01,v1
-7,female,1,0,0.38,2024-01-01,v1
-8,female,0,0,0.15,2024-01-01,v1
-9,female,1,1,0.78,2024-01-01,v1
-10,female,1,0,0.35,2024-01-01,v1
-```
-
-Then:
-1. Go to **Fairness** → **Upload & Configure**
-2. Upload `test_data.csv`
-3. Set: Record ID = `id`, Target = `actual`, Predicted = `predicted`, Timestamp = `date`, Model = `model`
-4. Protected Attribute: Column = `gender`, Reference Group = `male`
-5. Click **Upload & Profile**, then **Run Analysis**
-
-You should see: men are approved at 100% of qualified applicants, women only 33% → **HIGH risk, disparate impact violation**.
-
----
-
-## REST API Reference
-
-All endpoints are under `/api/fairness/`. These are used by the frontend automatically, but you can also call them directly.
-
-### Upload a dataset
-```
-POST /api/fairness/upload
-Content-Type: multipart/form-data
-
-Form fields:
-  file: <your CSV or JSON file>
-  config: <JSON string with settings>
-```
-
-### List datasets
-```
-GET /api/fairness/datasets
-```
-
-### Get dataset details
-```
-GET /api/fairness/datasets/:id
-```
-
-### Run analysis
-```
-POST /api/fairness/datasets/:id/analyze
-```
-
-### Get report
-```
-GET /api/fairness/datasets/:id/report
-```
-
-### Get audit trail
-```
-GET /api/fairness/datasets/:id/audit-trail
-```
-
-### Get review queue
-```
-GET /api/fairness/review-queue?dataset_id=<id>
-```
-
-### Update review item
-```
-PATCH /api/fairness/review-queue/:itemId
-Body: { "status": "acknowledged|resolved|dismissed", "reviewer": "name" }
-```
+Everything runs in pure JavaScript — **no LLMs, no external AI services, no probabilistic components**.
 
 ---
 
 ## Architecture
 
 ```
-server/src/fairness/
-├── services/
-│   ├── fairnessMetrics.js   ← Computes all metrics (pure math, no AI)
-│   ├── datasetProfiler.js   ← Statistical summary of datasets
-│   └── auditService.js      ← Audit log, reports, review queue
-└── utils/
-    ├── csvParser.js          ← Parses CSV files
-    ├── validation.js         ← Validates config and schema
-    └── mathHelpers.js        ← Math functions (confusion matrix, etc.)
-
-server/src/routes/
-└── fairnessRoutes.js         ← All 8 REST endpoints
-
-client/src/pages/
-└── FairnessPage.jsx          ← Frontend UI
+Client (React)                Backend (Node.js / Express)
+┌────────────────┐            ┌────────────────────────────────┐
+│  FairnessPage  │───upload──▷│  fairnessRoutes.js             │
+│   • Upload     │            │    ├─ validation.js             │
+│   • Results    │            │    ├─ csvParser.js               │
+│   • Mitigation │            │    ├─ datasetProfiler.js         │
+│   • Review     │            │    ├─ fairnessMetrics.js         │
+│   • Audit      │            │    ├─ auditService.js            │
+│   • Gate Status│            │    ├─ mitigationService.js       │
+│                │            │    └─ executionGateService.js     │
+└────────────────┘            └────────────────────────────────┘
+                                       │
+                              ┌────────┴────────┐
+                              │   SQLite DB      │
+                              │ • fairness_*     │
+                              │ • audit triggers │
+                              └─────────────────┘
 ```
 
-All metrics are **deterministic** — same input always produces the same output. No LLMs or AI services are used for computation.
+---
+
+## Database Schema
+
+### Tables
+
+| Table | Purpose |
+|-------|---------|
+| `fairness_datasets` | Uploaded datasets with config, profile, and raw data blob |
+| `fairness_audit_logs` | **Immutable** audit trail (enforced by DB triggers) |
+| `fairness_reports` | Generated fairness analysis reports |
+| `fairness_review_queue` | Flagged violations with severity, policy_level, and review status |
+| `fairness_mitigation_reports` | Threshold adjustment results with before/after metrics |
+| `fairness_impacted_cases` | Row-level records affected by mitigation |
+| `fairness_gate_decisions` | Operational log of every gate evaluation |
+
+### Immutability
+
+SQLite triggers prevent `UPDATE` and `DELETE` on `fairness_audit_logs`:
+
+```sql
+CREATE TRIGGER prevent_audit_log_update
+  BEFORE UPDATE ON fairness_audit_logs
+  BEGIN SELECT RAISE(ABORT, 'Fairness audit logs are immutable'); END;
+
+CREATE TRIGGER prevent_audit_log_delete
+  BEFORE DELETE ON fairness_audit_logs
+  BEGIN SELECT RAISE(ABORT, 'Fairness audit logs are immutable'); END;
+```
+
+---
+
+## API Endpoints
+
+### Dataset Management
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/fairness/upload` | Upload dataset (multipart) with config |
+| `GET` | `/api/fairness/datasets` | List all datasets |
+| `GET` | `/api/fairness/datasets/:id` | Get dataset details + profile |
+
+### Analysis & Reporting
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/fairness/datasets/:id/analyze` | Compute fairness metrics, generate report, evaluate gate |
+| `GET` | `/api/fairness/datasets/:id/report` | Get latest report |
+| `GET` | `/api/fairness/datasets/:id/audit-trail` | Get audit history |
+
+### Mitigation
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/fairness/datasets/:id/mitigate` | Run threshold adjustment mitigation |
+| `GET` | `/api/fairness/datasets/:id/mitigation-report` | Get latest mitigation report |
+| `GET` | `/api/fairness/datasets/:id/impacted-cases` | Get row-level impacted cases |
+
+### Review Queue
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/fairness/review-queue` | List flagged violations (filterable) |
+| `PATCH` | `/api/fairness/review-queue/:id` | Update review item status |
+
+### Execution Gate
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/fairness/execution-gate` | Read-only gate status + metrics |
+
+---
+
+## Data Contracts
+
+### Strict Validation Rules
+
+1. **Binary-only outcomes**: `target_outcome` and `predicted_outcome` columns must contain only `0/1/true/false/yes/no`. Non-binary values are rejected.
+2. **No nulls in required columns**: `record_id`, `target_outcome`, `predicted_outcome` must be fully populated. Empty/null values are rejected.
+3. **Minimum 2 groups**: Each protected attribute must have at least 2 observed groups for fairness comparison.
+4. **Reference group validation**: If the specified reference group is not found in the data, a warning is issued.
+
+### Config Schema
+
+```json
+{
+  "dataset_name": "string (required, max 255 chars)",
+  "column_mappings": {
+    "record_id": "string (required)",
+    "target_outcome": "string (required)",
+    "predicted_outcome": "string (required)",
+    "timestamp": "string (required)",
+    "model_version": "string (required)",
+    "predicted_score": "string (optional, needed for mitigation)"
+  },
+  "protected_attributes": [
+    { "column": "string", "reference_group": "string" }
+  ],
+  "thresholds": {
+    "statistical_parity_difference": 0.1,
+    "disparate_impact_ratio_min": 0.8,
+    "disparate_impact_ratio_max": 1.25,
+    "equal_opportunity_difference": 0.1,
+    "average_odds_difference": 0.1
+  },
+  "zero_division_policy": "null | zero"
+}
+```
+
+---
+
+## Fairness Metrics
+
+### Per-Group Metrics (computed via streaming aggregate — O(n) per attribute)
+
+| Metric | Formula | Description |
+|--------|---------|-------------|
+| Selection Rate | `(TP + FP) / N` | Fraction of records predicted positive |
+| True Positive Rate | `TP / (TP + FN)` | Recall / Sensitivity |
+| False Positive Rate | `FP / (FP + TN)` | Fall-out |
+| Confusion Matrix | `TP, FP, TN, FN` | Stored per group for trace/debug |
+
+### Fairness Metrics (cross-group comparison)
+
+| Metric | Formula | Fair Range | Description |
+|--------|---------|------------|-------------|
+| SPD | `SR(group) - SR(ref)` | `[-0.1, +0.1]` | Statistical Parity Difference |
+| DIR | `SR(group) / SR(ref)` | `[0.8, 1.25]` | Disparate Impact Ratio (four-fifths rule) |
+| EOD | `TPR(group) - TPR(ref)` | `[-0.1, +0.1]` | Equal Opportunity Difference |
+| AOD | `0.5 * ((FPR_g - FPR_r) + (TPR_g - TPR_r))` | `[-0.1, +0.1]` | Average Odds Difference |
+
+### Advanced Metrics
+
+- **Calibration by Group**: Mean predicted score vs actual positive rate per group
+- **Representation Skew**: Group proportions vs expected uniform distribution
+- **Missingness by Group**: Missing value rates per column per group
+
+### Zero Division Policy
+
+Controlled by `zero_division_policy` in config:
+- `"null"` (default): Returns `null` when denominator is 0
+- `"zero"`: Returns `0` when denominator is 0
+
+---
+
+## Streaming Aggregate Mode
+
+Group-level confusion matrices are computed in a **single O(n) pass** per attribute using `streamingGroupAggregate`. This avoids storing all rows per group and reduces memory usage:
+
+```javascript
+// O(n) per-group TP/FP/TN/FN without per-group row storage
+const groupAggs = streamingGroupAggregate(
+  rows, keyFn, targetCol, predictedCol, toBinaryFn
+);
+```
+
+---
+
+## Violation Detection
+
+### Severity Mapping
+
+| Level | Criteria | Policy Level |
+|-------|----------|-------------|
+| `high` | `|value| > threshold × 2` or DIR < 0.6 or DIR > 1.67 | `block` |
+| `medium` | `|value| > threshold` | `warning` |
+| `low` | Within threshold | (no violation) |
+
+### Disadvantaged Group Detection
+
+For each metric, the system identifies the **worst-performing group** by computing:
+- `worst_group`: Group name with the highest distance from fairness
+- `worst_value`: The actual metric value for that group
+- `distance_from_ref`: Absolute distance from the reference/ideal value
+
+---
+
+## Execution Gate
+
+### Design Principles
+
+1. **Non-configurable**: Block criteria are hard-coded, not per-run adjustable
+2. **Deterministic**: Same database state → same gate decision
+3. **Scoped**: Only `mission` workflows are gated; testbench workflows bypass entirely
+
+### Block Criteria
+
+The gate **BLOCKS** when:
+1. **Any** latest fairness report has `risk_level = 'high'`, OR
+2. **Any** unresolved high-severity review queue item exists (`status IN ('open', 'acknowledged')`)
+
+The gate **ALLOWS** when:
+1. All latest reports are `low` or `medium` risk, AND
+2. All high-severity queue items are `resolved` or `dismissed`
+
+### Rollout Modes
+
+| Mode | Behavior |
+|------|----------|
+| `shadow` (default) | Compute gate decision, log it, but **don't block** workflow starts |
+| `enforce` | Compute gate decision AND **hard-block** workflow starts if BLOCK |
+
+Set via environment variable: `FAIRNESS_GATE_MODE=shadow|enforce`
+
+### Gate Decision Object
+
+```json
+{
+  "allowed": true,
+  "mode": "shadow",
+  "decision": "ALLOW",
+  "message": "All fairness checks passed.",
+  "blocking_datasets": [],
+  "blocking_items": [],
+  "evaluated_at": "2026-04-18T...",
+  "evaluation_ms": 2.1
+}
+```
+
+### HTTP 423 Response (Enforce Mode)
+
+When a mission workflow is blocked, the API returns:
+
+```json
+HTTP 423 Locked
+{
+  "error": "FAIRNESS_GATE_BLOCKED",
+  "message": "Execution blocked: 1 dataset(s) with HIGH risk level.",
+  "gate": { /* full gate decision object */ }
+}
+```
+
+### Integration Points
+
+1. **Post-analysis**: Gate evaluates automatically after every `POST /analyze`
+2. **Post-review-update**: Gate re-evaluates after every `PATCH /review-queue/:id`
+3. **Pre-workflow-start**: Gate checks in `workflowRunner.startWorkflow()` for `mission` workflows
+4. **Preflight check**: Gate evaluates on `GET /execution-gate` requests
+
+---
+
+## Mitigation Service
+
+### Method: Threshold Adjustment
+
+Uses **fixed-bin score buckets** (B=100) for approximate threshold sweep.
+
+**Complexity**: `O(n + B × G)` per protected attribute, where:
+- `n` = total rows
+- `B` = number of bins (100)
+- `G` = number of groups
+
+### Algorithm
+
+1. Partition rows by group, collect predicted scores into 100 fixed bins
+2. Compute the reference group's selection rate as the target
+3. For each non-reference group, sweep thresholds (high to low) to find the one that best matches the target selection rate
+4. Apply adjusted thresholds, recompute all fairness metrics
+5. Store before/after deltas and row-level impacted cases
+
+### Prerequisites
+
+- Dataset must have `predicted_score` column mapped (continuous probability 0–1)
+- Dataset must be in `analyzed` status
+
+### Output
+
+```json
+{
+  "id": "uuid",
+  "method": "threshold_adjustment",
+  "config": { "num_bins": 100, "group_thresholds": {...} },
+  "before_summary": {...},
+  "after_summary": {...},
+  "deltas": { "per_attribute": {...} },
+  "impacted_count": 42
+}
+```
+
+---
+
+## Audit Trail
+
+Every action is logged as an immutable audit event:
+
+| Action | Trigger |
+|--------|---------|
+| `upload` | Dataset uploaded |
+| `profile` | Dataset profiled |
+| `analyze` | Fairness analysis run |
+| `analyze_error` | Analysis failed |
+| `execution_gate` | Gate evaluated (with decision) |
+| `mitigate` | Mitigation run |
+| `review_update` | Review queue item updated |
+
+Each event records: `dataset_id`, `action`, `details` (JSON), `config_snapshot`, `metrics_snapshot`, `actor`, `timestamp`.
+
+---
+
+## Frontend (FairnessPage.jsx)
+
+### Tabs
+
+1. **Upload & Configure**: File upload (CSV/JSON), column mapping, protected attribute definition
+2. **Analysis Results**: Risk banner, per-group metrics table, fairness metrics, disadvantaged groups, violations with policy badges
+3. **Mitigation**: Before/after delta comparison, impacted case count, computed thresholds
+4. **Review Queue**: Flagged violations with severity + policy_level badges, acknowledge/resolve/dismiss actions
+5. **Audit Trail**: Immutable timeline of all actions with expandable details
+
+### Gate Status Indicator
+
+Displayed in the page header:
+- 🟢 `GATE: ALLOW (mode)` — all clear
+- 🔴 `GATE: BLOCK (mode)` — high-risk violations detected
+
+Updates automatically after analysis, mitigation, and review actions.
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FAIRNESS_GATE_MODE` | `shadow` | Gate enforcement mode (`shadow` or `enforce`) |
+| `FAIRNESS_THRESHOLD` | `0.20` | Legacy threshold (superseded by per-metric thresholds in config) |
+
+---
+
+## File Structure
+
+```
+server/src/fairness/
+├── services/
+│   ├── fairnessMetrics.js      # Deterministic metrics engine (streaming aggregate)
+│   ├── datasetProfiler.js      # O(n) dataset profiling
+│   ├── auditService.js         # Audit trail, report generation, review queue
+│   ├── executionGateService.js # Central gate evaluator (non-configurable)
+│   └── mitigationService.js    # Threshold adjustment mitigation
+└── utils/
+    ├── validation.js           # Strict input validation (binary, nulls, groups)
+    ├── csvParser.js            # CSV parsing with quoted field support
+    └── mathHelpers.js          # Pure math (safeDiv, confusionMatrix, streaming aggregate)
+
+server/src/routes/
+└── fairnessRoutes.js           # REST API (12 endpoints)
+
+server/src/engine/
+└── workflowRunner.js           # Gate enforcement for mission workflows
+
+client/src/pages/
+└── FairnessPage.jsx            # Full UI (5 tabs + gate indicator)
+```
+
+---
+
+## Security Considerations
+
+1. **Audit immutability**: SQLite triggers prevent tampering with the audit log
+2. **Input sanitization**: All user-provided strings are sanitized to remove control characters
+3. **File size limits**: 50MB max upload, 1M max rows
+4. **Gate non-configurability**: Block criteria cannot be overridden at runtime
+5. **Scoped enforcement**: Only mission workflows are gated; testbench is unaffected

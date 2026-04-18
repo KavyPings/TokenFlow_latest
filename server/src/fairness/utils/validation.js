@@ -21,6 +21,11 @@ const REQUIRED_COLUMN_MAPPINGS = ['record_id', 'target_outcome', 'predicted_outc
 /** Optional column mapping keys */
 const OPTIONAL_COLUMN_MAPPINGS = ['predicted_score', 'decision_context', 'dataset_split'];
 
+/** Accepted binary string values (lowercased) */
+const BINARY_TRUE = new Set(['1', 'true', 'yes']);
+const BINARY_FALSE = new Set(['0', 'false', 'no']);
+const BINARY_ALL = new Set([...BINARY_TRUE, ...BINARY_FALSE]);
+
 /**
  * Validate the user-provided fairness config object.
  * Returns { valid: boolean, errors: string[] }
@@ -124,12 +129,20 @@ export function validateConfig(config) {
     }
   }
 
+  // Validate zero_division_policy (optional)
+  if (config.zero_division_policy !== undefined) {
+    if (config.zero_division_policy !== 'null' && config.zero_division_policy !== 'zero') {
+      errors.push('"zero_division_policy" must be "null" or "zero"');
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
 /**
- * Validate that the dataset rows contain all required columns
- * specified in the config column mappings.
+ * Validate that the dataset rows contain all required columns,
+ * enforce binary-only y_true/y_pred, reject nulls in required columns,
+ * and require ≥2 observed groups per protected attribute.
  *
  * @param {object[]} rows - Parsed dataset rows
  * @param {object} config - Validated config object
@@ -170,19 +183,80 @@ export function validateDatasetSchema(rows, config) {
     }
   }
 
-  // Validate target/predicted are binary-like
-  if (errors.length === 0) {
-    const targetCol = mappings.target_outcome;
-    const predCol = mappings.predicted_outcome;
+  // If column-existence errors, stop here (can't validate values)
+  if (errors.length > 0) {
+    return { valid: false, errors, warnings };
+  }
 
-    const targetValues = new Set(rows.slice(0, 1000).map((r) => r[targetCol]).filter((v) => v !== null));
-    const predValues = new Set(rows.slice(0, 1000).map((r) => r[predCol]).filter((v) => v !== null));
+  // ── Strict binary enforcement on ALL rows ──────────────
+  const targetCol = mappings.target_outcome;
+  const predCol = mappings.predicted_outcome;
+  const recordIdCol = mappings.record_id;
+  const requiredCols = [recordIdCol, targetCol, predCol].filter(Boolean);
 
-    if (targetValues.size > 20) {
-      warnings.push(`target_outcome column "${targetCol}" has ${targetValues.size} unique values — expected binary (0/1)`);
+  let nullsInRequired = 0;
+  let nonBinaryTarget = 0;
+  let nonBinaryPred = 0;
+  let firstBadTargetVal = null;
+  let firstBadPredVal = null;
+
+  for (const row of rows) {
+    // Null check on required columns
+    for (const col of requiredCols) {
+      const val = row[col];
+      if (val === null || val === undefined || val === '') {
+        nullsInRequired++;
+      }
     }
-    if (predValues.size > 20) {
-      warnings.push(`predicted_outcome column "${predCol}" has ${predValues.size} unique values — expected binary (0/1)`);
+
+    // Binary check on target_outcome
+    const targetVal = row[targetCol];
+    if (targetVal !== null && targetVal !== undefined && targetVal !== '') {
+      const strVal = String(targetVal).toLowerCase().trim();
+      if (!BINARY_ALL.has(strVal)) {
+        nonBinaryTarget++;
+        if (!firstBadTargetVal) firstBadTargetVal = targetVal;
+      }
+    }
+
+    // Binary check on predicted_outcome
+    const predVal = row[predCol];
+    if (predVal !== null && predVal !== undefined && predVal !== '') {
+      const strVal = String(predVal).toLowerCase().trim();
+      if (!BINARY_ALL.has(strVal)) {
+        nonBinaryPred++;
+        if (!firstBadPredVal) firstBadPredVal = predVal;
+      }
+    }
+  }
+
+  if (nullsInRequired > 0) {
+    errors.push(`Found ${nullsInRequired} null/empty value(s) in required columns [${requiredCols.join(', ')}]. All required columns must be fully populated.`);
+  }
+
+  if (nonBinaryTarget > 0) {
+    errors.push(`target_outcome column "${targetCol}" contains ${nonBinaryTarget} non-binary value(s) (e.g. "${firstBadTargetVal}"). Only 0/1/true/false/yes/no are allowed.`);
+  }
+
+  if (nonBinaryPred > 0) {
+    errors.push(`predicted_outcome column "${predCol}" contains ${nonBinaryPred} non-binary value(s) (e.g. "${firstBadPredVal}"). Only 0/1/true/false/yes/no are allowed.`);
+  }
+
+  // ── Require ≥2 observed groups per protected attribute ──
+  for (const attr of protectedAttrs) {
+    const observedGroups = new Set();
+    for (const row of rows) {
+      const val = row[attr.column];
+      if (val !== null && val !== undefined && val !== '') {
+        observedGroups.add(String(val));
+      }
+    }
+    if (observedGroups.size < 2) {
+      errors.push(`Protected attribute "${attr.column}" has only ${observedGroups.size} observed group(s): [${[...observedGroups].join(', ')}]. At least 2 groups are required for fairness comparison.`);
+    }
+    // Warn if reference_group not found in observed groups
+    if (observedGroups.size >= 2 && !observedGroups.has(String(attr.reference_group))) {
+      warnings.push(`Reference group "${attr.reference_group}" for attribute "${attr.column}" not found in observed groups: [${[...observedGroups].join(', ')}]`);
     }
   }
 

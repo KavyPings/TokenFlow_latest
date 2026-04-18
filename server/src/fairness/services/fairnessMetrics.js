@@ -8,8 +8,10 @@
 
 import {
   safeDiv,
+  safeDivPolicy,
   confusionMatrix,
   groupBy,
+  streamingGroupAggregate,
   countMissing,
   round,
   mean,
@@ -71,28 +73,25 @@ export function falsePositiveRate(rows, targetCol, predictedCol) {
 }
 
 /**
- * Compute all group-level metrics for a single group.
+ * Compute group metrics from pre-aggregated confusion matrix stats.
+ * Used by the streaming aggregate path.
  *
- * @param {object[]} rows
- * @param {string} targetCol
- * @param {string} predictedCol
+ * @param {{ tp: number, fp: number, tn: number, fn: number, count: number, positives: number }} agg
+ * @param {string} zdPolicy - zero_division_policy: 'null' or 'zero'
  * @returns {object}
  */
-function computeGroupMetrics(rows, targetCol, predictedCol) {
-  const actual = rows.map((r) => toBinary(r[targetCol]));
-  const predicted = rows.map((r) => toBinary(r[predictedCol]));
-  const cm = confusionMatrix(actual, predicted);
-
+function computeGroupMetricsFromAggregate(agg, zdPolicy = 'null') {
+  const divFn = (n, d) => safeDivPolicy(n, d, zdPolicy);
   return {
-    count: rows.length,
-    selection_rate: round(safeDiv(cm.tp + cm.fp, cm.total)),
-    true_positive_rate: round(safeDiv(cm.tp, cm.tp + cm.fn)),
-    false_positive_rate: round(safeDiv(cm.fp, cm.fp + cm.tn)),
+    count: agg.count,
+    selection_rate: round(divFn(agg.tp + agg.fp, agg.count)),
+    true_positive_rate: round(divFn(agg.tp, agg.tp + agg.fn)),
+    false_positive_rate: round(divFn(agg.fp, agg.fp + agg.tn)),
     confusion_matrix: {
-      true_positives: cm.tp,
-      false_positives: cm.fp,
-      true_negatives: cm.tn,
-      false_negatives: cm.fn,
+      true_positives: agg.tp,
+      false_positives: agg.fp,
+      true_negatives: agg.tn,
+      false_negatives: agg.fn,
     },
   };
 }
@@ -279,6 +278,9 @@ export function missingnessByGroup(rows, groupCol, columnsToCheck) {
  * Compute ALL fairness metrics for a dataset given a config.
  * This is the main entry point for fairness analysis.
  *
+ * Uses streamingGroupAggregate for the core confusion-matrix pass
+ * (O(n) per attribute, no per-group row storage).
+ *
  * @param {object[]} rows - Parsed dataset rows
  * @param {object} config - Validated configuration
  * @returns {object} - Complete metrics result
@@ -288,18 +290,22 @@ export function computeAllMetrics(rows, config) {
   const targetCol = mappings.target_outcome;
   const predictedCol = mappings.predicted_outcome;
   const scoreCol = mappings.predicted_score || null;
+  const zdPolicy = config.zero_division_policy || 'null';
 
   const protectedAttributes = config.protected_attributes || [];
 
   const result = {
     computed_at: new Date().toISOString(),
     total_records: rows.length,
+    zero_division_policy: zdPolicy,
     per_attribute: {},
   };
 
   for (const attr of protectedAttributes) {
     const { column, reference_group } = attr;
-    const groups = groupBy(rows, (r) => r[column]);
+
+    // ── Streaming pass: O(n) per-group confusion matrices ──
+    const groupAggs = streamingGroupAggregate(rows, (r) => r[column], targetCol, predictedCol, toBinary);
 
     const attrResult = {
       attribute: column,
@@ -309,16 +315,16 @@ export function computeAllMetrics(rows, config) {
       advanced: {},
     };
 
-    // Compute group-level metrics for each group
-    for (const [groupName, groupRows] of groups) {
-      attrResult.groups[groupName] = computeGroupMetrics(groupRows, targetCol, predictedCol);
+    // Compute group-level metrics from aggregates (no row storage)
+    for (const [groupName, agg] of groupAggs) {
+      attrResult.groups[groupName] = computeGroupMetricsFromAggregate(agg, zdPolicy);
     }
 
     // Get reference group metrics
     const refMetrics = attrResult.groups[String(reference_group)];
     if (!refMetrics) {
       attrResult.fairness_metrics = {
-        error: `Reference group "${reference_group}" not found in data. Available groups: [${[...groups.keys()].join(', ')}]`,
+        error: `Reference group "${reference_group}" not found in data. Available groups: [${[...groupAggs.keys()].join(', ')}]`,
       };
     } else {
       // Compute fairness metrics for each non-reference group
@@ -352,7 +358,7 @@ export function computeAllMetrics(rows, config) {
       attrResult.fairness_metrics = fairnessPerGroup;
     }
 
-    // Advanced metrics
+    // Advanced metrics (still use groupBy for row access)
     // Calibration (only if predicted_score column exists)
     if (scoreCol) {
       attrResult.advanced.calibration = calibrationByGroup(rows, targetCol, scoreCol, column);
@@ -382,7 +388,7 @@ export function computeAllMetrics(rows, config) {
  * @param {*} value
  * @returns {number} 0 or 1
  */
-function toBinary(value) {
+export function toBinary(value) {
   if (value === null || value === undefined) return 0;
   if (typeof value === 'boolean') return value ? 1 : 0;
   if (typeof value === 'number') return value ? 1 : 0;

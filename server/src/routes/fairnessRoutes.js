@@ -2,14 +2,18 @@
 // Fairness Routes — REST API for the fairness auditing system
 //
 // Endpoints:
-//   POST   /api/fairness/upload                  Upload dataset + config
-//   GET    /api/fairness/datasets                 List datasets
-//   GET    /api/fairness/datasets/:id             Get dataset details
-//   POST   /api/fairness/datasets/:id/analyze     Run fairness analysis
-//   GET    /api/fairness/datasets/:id/report      Get latest report
-//   GET    /api/fairness/datasets/:id/audit-trail Get audit history
-//   GET    /api/fairness/review-queue             Get flagged violations
-//   PATCH  /api/fairness/review-queue/:id         Update review item
+//   POST   /api/fairness/upload                     Upload dataset + config
+//   GET    /api/fairness/datasets                    List datasets
+//   GET    /api/fairness/datasets/:id                Get dataset details
+//   POST   /api/fairness/datasets/:id/analyze        Run fairness analysis
+//   GET    /api/fairness/datasets/:id/report         Get latest report
+//   GET    /api/fairness/datasets/:id/audit-trail    Get audit history
+//   POST   /api/fairness/datasets/:id/mitigate       Run mitigation
+//   GET    /api/fairness/datasets/:id/mitigation-report  Get mitigation results
+//   GET    /api/fairness/datasets/:id/impacted-cases Get impacted rows
+//   GET    /api/fairness/review-queue                Get flagged violations
+//   PATCH  /api/fairness/review-queue/:id            Update review item
+//   GET    /api/fairness/execution-gate              Get gate status
 // ═══════════════════════════════════════════════════════════
 
 import { Router } from 'express';
@@ -33,6 +37,8 @@ import {
   getReviewQueue,
   updateReviewItem,
 } from '../fairness/services/auditService.js';
+import { evaluateGate, getGateMetrics } from '../fairness/services/executionGateService.js';
+import { runMitigation, getLatestMitigationReport, getImpactedCases } from '../fairness/services/mitigationService.js';
 
 const router = Router();
 
@@ -308,10 +314,29 @@ router.post('/datasets/:id/analyze', (req, res) => {
       actor: req.auth?.sub || 'anonymous',
     });
 
+    // ── Evaluate execution gate post-analysis ──────────
+    const gateDecision = evaluateGate(db, { triggeredBy: 'analysis' });
+
+    // Log gate decision as audit event
+    logAuditEvent(db, {
+      datasetId: req.params.id,
+      action: 'execution_gate',
+      details: {
+        decision: gateDecision.decision,
+        allowed: gateDecision.allowed,
+        mode: gateDecision.mode,
+        blocking_datasets_count: gateDecision.blocking_datasets.length,
+        blocking_items_count: gateDecision.blocking_items.length,
+        evaluation_ms: gateDecision.evaluation_ms,
+      },
+      actor: 'system',
+    });
+
     return res.json({
       success: true,
       dataset_id: req.params.id,
       report,
+      gate: gateDecision,
     });
   } catch (err) {
     console.error('[FAIRNESS] Analysis error:', err);
@@ -383,6 +408,90 @@ router.get('/datasets/:id/audit-trail', (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────
+// POST /datasets/:id/mitigate — Run bias mitigation
+// ───────────────────────────────────────────────────────────
+router.post('/datasets/:id/mitigate', (req, res) => {
+  try {
+    const db = getDb();
+    const dataset = db.prepare(`
+      SELECT id, config, data_blob, status
+      FROM fairness_datasets
+      WHERE id = ?
+    `).get(req.params.id);
+
+    if (!dataset) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Dataset not found' });
+    }
+
+    if (dataset.status !== 'analyzed') {
+      return res.status(400).json({ error: 'NOT_ANALYZED', message: 'Run analysis before mitigation.' });
+    }
+
+    const config = safeJsonParse(dataset.config, {});
+    const rows = safeJsonParse(dataset.data_blob, []);
+
+    // Get latest report ID
+    const latestReport = getLatestReport(db, req.params.id);
+    if (!latestReport) {
+      return res.status(400).json({ error: 'NO_REPORT', message: 'No report found. Run analysis first.' });
+    }
+
+    const mitigationReport = runMitigation(db, req.params.id, latestReport.id, rows, config);
+
+    // Log audit event
+    logAuditEvent(db, {
+      datasetId: req.params.id,
+      action: 'mitigate',
+      details: {
+        method: 'threshold_adjustment',
+        impacted_count: mitigationReport.impacted_count,
+        mitigation_id: mitigationReport.id,
+      },
+      actor: req.auth?.sub || 'anonymous',
+    });
+
+    return res.json({ success: true, mitigation: mitigationReport });
+  } catch (err) {
+    console.error('[FAIRNESS] Mitigation error:', err);
+    return res.status(500).json({ error: 'MITIGATION_FAILED', message: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────
+// GET /datasets/:id/mitigation-report — Get latest mitigation
+// ───────────────────────────────────────────────────────────
+router.get('/datasets/:id/mitigation-report', (req, res) => {
+  try {
+    const db = getDb();
+    const report = getLatestMitigationReport(db, req.params.id);
+    if (!report) {
+      return res.status(404).json({ error: 'NO_MITIGATION', message: 'No mitigation report found.' });
+    }
+    return res.json(report);
+  } catch (err) {
+    console.error('[FAIRNESS] Mitigation report error:', err);
+    return res.status(500).json({ error: 'GET_MITIGATION_FAILED', message: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────
+// GET /datasets/:id/impacted-cases — Get row-level impacted cases
+// ───────────────────────────────────────────────────────────
+router.get('/datasets/:id/impacted-cases', (req, res) => {
+  try {
+    const db = getDb();
+    const result = getImpactedCases(db, req.params.id, {
+      limit: req.query.limit,
+      offset: req.query.offset,
+    });
+    return res.json(result);
+  } catch (err) {
+    console.error('[FAIRNESS] Impacted cases error:', err);
+    return res.status(500).json({ error: 'GET_IMPACTED_FAILED', message: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────
 // GET /review-queue — Get flagged violations
 // ───────────────────────────────────────────────────────────
 router.get('/review-queue', (req, res) => {
@@ -441,10 +550,28 @@ router.patch('/review-queue/:id', (req, res) => {
       actor: req.auth?.sub || 'anonymous',
     });
 
-    return res.json({ success: true, item: updated });
+    // Re-evaluate gate after review status change
+    const gateDecision = evaluateGate(db, { triggeredBy: 'review_update' });
+
+    return res.json({ success: true, item: updated, gate: gateDecision });
   } catch (err) {
     console.error('[FAIRNESS] Review update error:', err);
     return res.status(500).json({ error: 'UPDATE_FAILED', message: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────
+// GET /execution-gate — Read-only gate status + metrics
+// ───────────────────────────────────────────────────────────
+router.get('/execution-gate', (req, res) => {
+  try {
+    const db = getDb();
+    const gate = evaluateGate(db, { triggeredBy: 'preflight_check' });
+    const metrics = getGateMetrics(db);
+    return res.json({ gate, metrics });
+  } catch (err) {
+    console.error('[FAIRNESS] Gate status error:', err);
+    return res.status(500).json({ error: 'GATE_STATUS_FAILED', message: err.message });
   }
 });
 

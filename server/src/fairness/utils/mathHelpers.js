@@ -132,3 +132,56 @@ export function mean(values) {
   }
   return safeDiv(sum, count);
 }
+
+/**
+ * Safe division with configurable zero-division policy.
+ * @param {number} numerator
+ * @param {number} denominator
+ * @param {'null'|'zero'} policy - What to return when denominator is 0
+ * @returns {number|null}
+ */
+export function safeDivPolicy(numerator, denominator, policy = 'null') {
+  if (denominator === 0 || !Number.isFinite(denominator)) {
+    return policy === 'zero' ? 0 : null;
+  }
+  const result = numerator / denominator;
+  return Number.isFinite(result) ? result : (policy === 'zero' ? 0 : null);
+}
+
+/**
+ * Streaming group aggregate — computes per-group confusion matrices
+ * in a single O(n) pass WITHOUT storing rows per group.
+ *
+ * Returns Map<groupKey, { tp, fp, tn, fn, count, positives }>.
+ *
+ * @param {object[]} rows
+ * @param {function(object): string} keyFn - Returns group key
+ * @param {string} targetCol - Actual outcome column
+ * @param {string} predictedCol - Predicted outcome column
+ * @param {function(*): number} toBinaryFn - Converts value to 0/1
+ * @returns {Map<string, { tp: number, fp: number, tn: number, fn: number, count: number, positives: number }>}
+ */
+export function streamingGroupAggregate(rows, keyFn, targetCol, predictedCol, toBinaryFn) {
+  const groups = new Map();
+
+  for (const row of rows) {
+    const key = String(keyFn(row) ?? '__null__');
+    if (!groups.has(key)) {
+      groups.set(key, { tp: 0, fp: 0, tn: 0, fn: 0, count: 0, positives: 0 });
+    }
+    const agg = groups.get(key);
+    const a = toBinaryFn(row[targetCol]);
+    const p = toBinaryFn(row[predictedCol]);
+
+    agg.count++;
+    if (p === 1) agg.positives++;
+
+    if (a === 1 && p === 1) agg.tp++;
+    else if (a === 0 && p === 1) agg.fp++;
+    else if (a === 0 && p === 0) agg.tn++;
+    else agg.fn++; // a === 1 && p === 0
+  }
+
+  return groups;
+}
+

@@ -13,6 +13,7 @@ import { policyEngine } from './policyEngine.js';
 import { readCloudObject, callInternalApi, writeCloudObject, readRepo } from '../services/agentService.js';
 import { vaultService } from '../services/vaultService.js';
 import { broadcast } from '../websocket/wsServer.js';
+import { evaluateGate, FairnessGateBlockedError } from '../fairness/services/executionGateService.js';
 
 const AGENT_ID = 'agent-cloud-worker';
 
@@ -31,6 +32,20 @@ class WorkflowRunner {
     const deterministic = opts.deterministic || false;
     const stepDelay = deterministic ? 50 : (opts.stepDelay || STEP_DELAY);
     const workflowType = opts.workflowType || 'mission';
+
+    // ── FAIRNESS EXECUTION GATE ─────────────────────────────
+    // Only enforced for mission workflows; testbench bypasses entirely
+    if (workflowType === 'mission') {
+      const gateDecision = evaluateGate(db, { triggeredBy: 'workflow_start' });
+      if (!gateDecision.allowed) {
+        console.log(`[WORKFLOW] 🚫 Fairness gate BLOCKED workflow start (mode: ${gateDecision.mode})`);
+        throw new FairnessGateBlockedError(gateDecision);
+      }
+      // In shadow mode with BLOCK decision, log but proceed
+      if (gateDecision.decision === 'BLOCK') {
+        console.log(`[WORKFLOW] ⚠ Fairness gate would BLOCK (shadow mode) — proceeding`);
+      }
+    }
 
     db.prepare(`
       INSERT INTO workflows (id, name, status, applicant_data, workflow_type, current_step)

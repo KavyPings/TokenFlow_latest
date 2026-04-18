@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { workflowRunner } from '../engine/workflowRunner.js';
 import { tokenEngine } from '../engine/tokenEngine.js';
 import { ALL_TASKS, getTaskById } from '../data/agentTasks.js';
+import { FairnessGateBlockedError } from '../fairness/services/executionGateService.js';
 
 const router = Router();
 
@@ -23,6 +24,13 @@ router.post('/start', async (req, res) => {
     const result = await workflowRunner.startWorkflow(taskData);
     res.status(201).json({ success: true, ...result });
   } catch (error) {
+    if (error instanceof FairnessGateBlockedError) {
+      return res.status(423).json({
+        error: 'FAIRNESS_GATE_BLOCKED',
+        message: error.message,
+        gate: error.gate,
+      });
+    }
     res.status(500).json({ error: error.message });
   }
 });

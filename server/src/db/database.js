@@ -60,6 +60,15 @@ export function getDb() {
   db.exec("UPDATE uploaded_workflows SET validation_errors = '[]' WHERE validation_errors IS NULL OR validation_errors = ''");
   db.exec("UPDATE uploaded_workflows SET last_error = '' WHERE last_error IS NULL");
 
+  // Add policy_level column to fairness_review_queue if missing (migration for existing DBs)
+  try {
+    db.prepare('SELECT policy_level FROM fairness_review_queue LIMIT 1').get();
+  } catch {
+    try {
+      db.exec("ALTER TABLE fairness_review_queue ADD COLUMN policy_level TEXT NOT NULL DEFAULT 'warning'");
+    } catch { /* table may not exist yet — schema.sql will create it */ }
+  }
+
   // Seed vault credentials if empty
   const count = db.prepare('SELECT COUNT(*) as count FROM vault_credentials').get();
   if (count.count === 0) {

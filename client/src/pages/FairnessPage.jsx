@@ -180,6 +180,8 @@ export default function FairnessPage() {
   const [report, setReport] = useState(null);
   const [auditTrail, setAuditTrail] = useState([]);
   const [reviewQueue, setReviewQueue] = useState({ items: [], total: 0 });
+  const [mitigationReport, setMitigationReport] = useState(null);
+  const [gateStatus, setGateStatus] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -193,13 +195,21 @@ export default function FairnessPage() {
     } catch (e) { setError(e.message); }
   }, []);
 
-  useEffect(() => { loadDatasets(); }, [loadDatasets]);
+  const loadGateStatus = useCallback(async () => {
+    try {
+      const data = await apiGet('/api/fairness/execution-gate');
+      setGateStatus(data.gate || null);
+    } catch { setGateStatus(null); }
+  }, []);
+
+  useEffect(() => { loadDatasets(); loadGateStatus(); }, [loadDatasets, loadGateStatus]);
 
   useEffect(() => {
     if (!activeDatasetId) return;
     apiGet(`/api/fairness/datasets/${activeDatasetId}/report`).then(setReport).catch(() => setReport(null));
     apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => setAuditTrail([]));
     apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`).then(setReviewQueue).catch(() => setReviewQueue({ items: [], total: 0 }));
+    apiGet(`/api/fairness/datasets/${activeDatasetId}/mitigation-report`).then(setMitigationReport).catch(() => setMitigationReport(null));
   }, [activeDatasetId]);
 
   async function handleUploadComplete(datasetId) {
@@ -217,10 +227,26 @@ export default function FairnessPage() {
     try {
       const data = await apiPost(`/api/fairness/datasets/${activeDatasetId}/analyze`);
       setReport({ report: data.report });
+      if (data.gate) setGateStatus(data.gate);
       setSuccess(`Analysis complete — Risk level: ${data.report.risk_level.toUpperCase()}`);
-      // Refresh audit trail + review queue
       apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => {});
       apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`).then(setReviewQueue).catch(() => {});
+      setTimeout(() => setSuccess(''), 6000);
+    } catch (e) { setError(e.message); }
+    setBusy('');
+  }
+
+  async function handleMitigate() {
+    if (!activeDatasetId) return;
+    clearMessages();
+    setBusy('mitigate');
+    try {
+      const data = await apiPost(`/api/fairness/datasets/${activeDatasetId}/mitigate`);
+      setMitigationReport(data.mitigation);
+      setTab('mitigation');
+      setSuccess(`Mitigation complete — ${data.mitigation.impacted_count} cases adjusted.`);
+      apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => {});
+      loadGateStatus();
       setTimeout(() => setSuccess(''), 6000);
     } catch (e) { setError(e.message); }
     setBusy('');
@@ -229,7 +255,8 @@ export default function FairnessPage() {
   async function handleReviewAction(itemId, status) {
     clearMessages();
     try {
-      await apiPatch(`/api/fairness/review-queue/${itemId}`, { status, reviewer: 'ui-user' });
+      const data = await apiPatch(`/api/fairness/review-queue/${itemId}`, { status, reviewer: 'ui-user' });
+      if (data.gate) setGateStatus(data.gate);
       apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`).then(setReviewQueue).catch(() => {});
       apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => {});
       setSuccess(`Review item ${status}`);
@@ -242,6 +269,7 @@ export default function FairnessPage() {
   const TABS = [
     { id: 'upload', label: 'Upload & Configure', icon: 'cloud_upload' },
     { id: 'results', label: 'Analysis Results', icon: 'analytics' },
+    { id: 'mitigation', label: 'Mitigation', icon: 'healing' },
     { id: 'review', label: 'Review Queue', icon: 'checklist', badge: reviewQueue.total },
     { id: 'audit', label: 'Audit Trail', icon: 'history' },
   ];
@@ -260,6 +288,19 @@ export default function FairnessPage() {
         <p className="text-sm mt-2 max-w-lg mx-auto" style={{ color: 'var(--on-surface-variant)' }}>
           Upload datasets, compute fairness metrics, detect bias, and generate audit reports — all deterministic, no AI.
         </p>
+        {/* Execution Gate Indicator */}
+        {gateStatus && (
+          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest"
+            style={{
+              background: gateStatus.decision === 'ALLOW' ? 'rgba(52,211,153,0.1)' : 'rgba(255,180,171,0.12)',
+              border: `1px solid ${gateStatus.decision === 'ALLOW' ? 'rgba(52,211,153,0.3)' : 'rgba(255,180,171,0.3)'}`,
+              color: gateStatus.decision === 'ALLOW' ? 'var(--success)' : 'var(--error)',
+            }}>
+            <span style={{ fontSize: 10 }}>{gateStatus.decision === 'ALLOW' ? '🟢' : '🔴'}</span>
+            Gate: {gateStatus.decision}
+            <span className="font-mono text-[8px]" style={{ color: 'var(--outline)' }}>({gateStatus.mode})</span>
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -335,11 +376,18 @@ export default function FairnessPage() {
                 <p>📊 {activeDataset.row_count.toLocaleString()} rows</p>
                 <p>📅 {new Date(activeDataset.created_at).toLocaleString()}</p>
               </div>
-              <button onClick={handleAnalyze} disabled={busy === 'analyze'}
+              <button onClick={handleAnalyze} disabled={busy === 'analyze' || busy === 'mitigate'}
                 className="btn-primary w-full mt-3 py-2 text-xs">
                 <M icon="analytics" style={{ fontSize: 16 }} />
                 {busy === 'analyze' ? 'Analyzing…' : activeDataset.status === 'analyzed' ? 'Re-run Analysis' : 'Run Analysis'}
               </button>
+              {activeDataset.status === 'analyzed' && (
+                <button onClick={handleMitigate} disabled={busy === 'mitigate' || busy === 'analyze'}
+                  className="btn-ghost w-full mt-2 py-2 text-xs" style={{ borderColor: 'rgba(196,192,255,0.2)' }}>
+                  <M icon="healing" style={{ fontSize: 16 }} />
+                  {busy === 'mitigate' ? 'Mitigating…' : 'Run Mitigation'}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -349,6 +397,7 @@ export default function FairnessPage() {
           <AnimatePresence mode="wait">
             {tab === 'upload' && <UploadTab key="upload" onComplete={handleUploadComplete} setError={setError} />}
             {tab === 'results' && <ResultsTab key="results" report={report} activeDataset={activeDataset} />}
+            {tab === 'mitigation' && <MitigationTab key="mitigation" mitigationReport={mitigationReport} activeDataset={activeDataset} />}
             {tab === 'review' && <ReviewTab key="review" queue={reviewQueue} onAction={handleReviewAction} />}
             {tab === 'audit' && <AuditTab key="audit" trail={auditTrail} />}
           </AnimatePresence>
@@ -701,6 +750,40 @@ function ResultsTab({ report, activeDataset }) {
         </div>
       ))}
 
+      {/* Disadvantaged Groups */}
+      {rpt.disadvantaged_groups?.length > 0 && (
+        <div className="card p-5">
+          <h3 className="text-sm font-bold uppercase tracking-[0.1em] font-headline mb-3">
+            <M icon="trending_down" style={{ fontSize: 16, color: 'var(--warning)', verticalAlign: 'middle', marginRight: 6 }} />
+            Disadvantaged Groups
+          </h3>
+          <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(70,69,85,0.15)' }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: 'var(--surface-container-high)' }}>
+                  <th className="px-3 py-2 text-left font-bold">Attribute</th>
+                  <th className="px-3 py-2 text-left font-bold">Metric</th>
+                  <th className="px-3 py-2 text-left font-bold">Worst Group</th>
+                  <th className="px-3 py-2 text-left font-bold">Value</th>
+                  <th className="px-3 py-2 text-left font-bold">Distance from Ref</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rpt.disadvantaged_groups.map((dg, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid rgba(70,69,85,0.08)' }}>
+                    <td className="px-3 py-2 font-bold">{dg.attribute}</td>
+                    <td className="px-3 py-2 font-mono text-[10px]">{dg.metric}</td>
+                    <td className="px-3 py-2 font-bold" style={{ color: 'var(--warning)' }}>{dg.worst_group}</td>
+                    <td className="px-3 py-2 font-mono">{fmt(dg.worst_value)}</td>
+                    <td className="px-3 py-2 font-mono" style={{ color: 'var(--error)' }}>{fmt(dg.distance_from_ref)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Violations list */}
       {rpt.violations?.length > 0 && (
         <div className="card p-5">
@@ -715,6 +798,13 @@ function ResultsTab({ report, activeDataset }) {
                 <div key={i} className="p-3 rounded-xl" style={{ background: sc.bg, border: `1px solid ${sc.text}22` }}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded" style={{ background: `${sc.text}18`, color: sc.text }}>{v.severity}</span>
+                    {v.policy_level && (
+                      <span className="text-[7px] font-bold uppercase tracking-widest px-1 py-0.5 rounded" style={{
+                        background: v.policy_level === 'block' ? 'rgba(255,180,171,0.15)' : 'rgba(251,191,36,0.1)',
+                        color: v.policy_level === 'block' ? 'var(--error)' : 'var(--warning)',
+                        border: `1px solid ${v.policy_level === 'block' ? 'rgba(255,180,171,0.3)' : 'rgba(251,191,36,0.2)'}`,
+                      }}>{v.policy_level}</span>
+                    )}
                     <span className="text-xs font-bold" style={{ color: sc.text }}>{v.metric}</span>
                     <span className="text-[10px] font-mono ml-auto" style={{ color: 'var(--outline)' }}>{v.attribute} → {v.group}</span>
                   </div>
@@ -726,6 +816,136 @@ function ResultsTab({ report, activeDataset }) {
         </div>
       )}
     </motion.div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TAB: Mitigation Results
+   ═══════════════════════════════════════════════════════════ */
+function MitigationTab({ mitigationReport, activeDataset }) {
+  if (!activeDataset) {
+    return <EmptyState icon="healing" text="Select a dataset from the sidebar to see mitigation results." />;
+  }
+
+  if (!mitigationReport) {
+    return <EmptyState icon="healing" text="No mitigation results yet. Run analysis first, then click 'Run Mitigation' in the sidebar." />;
+  }
+
+  const mr = mitigationReport;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+      {/* Summary banner */}
+      <div className="card p-5" style={{ background: 'rgba(196,192,255,0.08)', borderColor: 'rgba(196,192,255,0.2)' }}>
+        <div className="flex items-center gap-3">
+          <M icon="healing" style={{ fontSize: 28, color: 'var(--primary)' }} />
+          <div>
+            <p className="text-lg font-bold font-headline" style={{ color: 'var(--primary)' }}>
+              Threshold Adjustment Mitigation
+            </p>
+            <p className="text-xs" style={{ color: 'var(--on-surface-variant)' }}>
+              Method: {mr.method || 'threshold_adjustment'} • {mr.impacted_count} case{mr.impacted_count !== 1 ? 's' : ''} adjusted
+            </p>
+          </div>
+          <div className="ml-auto text-right">
+            <p className="text-2xl font-bold font-headline" style={{ color: 'var(--primary)' }}>{mr.impacted_count}</p>
+            <p className="text-[9px] uppercase tracking-widest" style={{ color: 'var(--outline)' }}>impacted</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Per-attribute deltas */}
+      {mr.deltas && Object.entries(mr.deltas.per_attribute || {}).map(([attr, attrDeltas]) => (
+        <div key={attr} className="card p-5">
+          <h3 className="text-sm font-bold uppercase tracking-[0.1em] font-headline mb-3">
+            <M icon="compare_arrows" style={{ fontSize: 16, color: 'var(--primary)', verticalAlign: 'middle', marginRight: 6 }} />
+            Deltas: <span style={{ color: 'var(--primary)' }}>{attr}</span>
+          </h3>
+
+          {/* Group accuracy deltas */}
+          {attrDeltas.groups && Object.keys(attrDeltas.groups).length > 0 && (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--outline)' }}>Group Accuracy Changes</p>
+              <div className="overflow-x-auto rounded-xl mb-4" style={{ border: '1px solid rgba(70,69,85,0.15)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--surface-container-high)' }}>
+                      <th className="px-3 py-2 text-left font-bold">Group</th>
+                      <th className="px-3 py-2 text-left font-bold">Selection Rate Δ</th>
+                      <th className="px-3 py-2 text-left font-bold">Accuracy Δ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(attrDeltas.groups).map(([grp, d]) => (
+                      <tr key={grp} style={{ borderTop: '1px solid rgba(70,69,85,0.08)' }}>
+                        <td className="px-3 py-2 font-bold">{grp}</td>
+                        <td className="px-3 py-2 font-mono"><DeltaCell value={d.selection_rate_delta} /></td>
+                        <td className="px-3 py-2 font-mono"><DeltaCell value={d.accuracy_delta} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {/* Fairness metric deltas */}
+          {attrDeltas.fairness && Object.keys(attrDeltas.fairness).length > 0 && (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--outline)' }}>Fairness Metric Changes</p>
+              <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(70,69,85,0.15)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--surface-container-high)' }}>
+                      <th className="px-3 py-2 text-left font-bold">Group</th>
+                      <th className="px-3 py-2 text-left font-bold">SPD Δ</th>
+                      <th className="px-3 py-2 text-left font-bold">DIR Δ</th>
+                      <th className="px-3 py-2 text-left font-bold">EOD Δ</th>
+                      <th className="px-3 py-2 text-left font-bold">AOD Δ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(attrDeltas.fairness).map(([grp, d]) => (
+                      <tr key={grp} style={{ borderTop: '1px solid rgba(70,69,85,0.08)' }}>
+                        <td className="px-3 py-2 font-bold">{grp}</td>
+                        <td className="px-3 py-2 font-mono"><DeltaCell value={d.spd_delta} /></td>
+                        <td className="px-3 py-2 font-mono"><DeltaCell value={d.dir_delta} /></td>
+                        <td className="px-3 py-2 font-mono"><DeltaCell value={d.eod_delta} /></td>
+                        <td className="px-3 py-2 font-mono"><DeltaCell value={d.aod_delta} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+
+      {/* Threshold config */}
+      {mr.config?.group_thresholds && (
+        <div className="card p-5">
+          <h3 className="text-sm font-bold uppercase tracking-[0.1em] font-headline mb-3">
+            <M icon="tune" style={{ fontSize: 16, color: 'var(--primary)', verticalAlign: 'middle', marginRight: 6 }} />
+            Computed Thresholds
+          </h3>
+          <pre className="text-[10px] p-3 rounded-xl overflow-auto max-h-48" style={{ background: 'var(--surface-container)', color: 'var(--on-surface-variant)' }}>
+            {JSON.stringify(mr.config.group_thresholds, null, 2)}
+          </pre>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function DeltaCell({ value }) {
+  if (value == null) return <span style={{ color: 'var(--outline)' }}>—</span>;
+  const positive = value > 0;
+  const near = Math.abs(value) < 0.001;
+  return (
+    <span style={{ color: near ? 'var(--outline)' : positive ? 'var(--success)' : 'var(--error)', fontWeight: near ? 400 : 600 }}>
+      {positive ? '+' : ''}{Number(value).toFixed(4)}
+    </span>
   );
 }
 
@@ -748,6 +968,13 @@ function ReviewTab({ queue, onAction }) {
           <div key={item.id} className="card p-4">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded" style={{ background: sc.bg, color: sc.text }}>{item.severity}</span>
+              {item.policy_level && (
+                <span className="text-[7px] font-bold uppercase tracking-widest px-1 py-0.5 rounded" style={{
+                  background: item.policy_level === 'block' ? 'rgba(255,180,171,0.15)' : 'rgba(251,191,36,0.1)',
+                  color: item.policy_level === 'block' ? 'var(--error)' : 'var(--warning)',
+                  border: `1px solid ${item.policy_level === 'block' ? 'rgba(255,180,171,0.3)' : 'rgba(251,191,36,0.2)'}`,
+                }}>{item.policy_level}</span>
+              )}
               <span className="text-xs font-bold">{item.metric_name}</span>
               <span className="text-[10px] font-mono" style={{ color: 'var(--outline)' }}>{item.attribute}: {item.group_name}</span>
               <StatusChip status={item.status} />
@@ -793,6 +1020,8 @@ function AuditTab({ trail }) {
     analyze: 'science',
     analyze_error: 'error',
     review_update: 'rate_review',
+    execution_gate: 'security',
+    mitigate: 'healing',
   };
 
   return (

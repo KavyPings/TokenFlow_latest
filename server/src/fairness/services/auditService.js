@@ -3,7 +3,8 @@
 // queue management for the fairness auditing system.
 //
 // Provides immutable logging, structured report generation
-// with risk assessment, and violation tracking.
+// with risk assessment, disadvantaged group detection,
+// and violation tracking with policy levels.
 // ═══════════════════════════════════════════════════════════
 
 import { v4 as uuidv4 } from 'uuid';
@@ -11,16 +12,17 @@ import { round } from '../utils/mathHelpers.js';
 import { getDefaultThresholds } from '../utils/validation.js';
 
 // ───────────────────────────────────────────────────────────
-// AUDIT TRAIL (append-only, immutable)
+// AUDIT TRAIL (append-only, immutable — enforced by DB triggers)
 // ───────────────────────────────────────────────────────────
 
 /**
  * Log an audit event. This is append-only — never update or delete.
+ * DB triggers enforce immutability.
  *
  * @param {import('better-sqlite3').Database} db
  * @param {object} params
  * @param {string} params.datasetId
- * @param {string} params.action - e.g. 'upload', 'profile', 'analyze', 'report', 'review_update'
+ * @param {string} params.action - e.g. 'upload', 'profile', 'analyze', 'report', 'review_update', 'execution_gate'
  * @param {object} [params.details={}] - Action-specific details
  * @param {object} [params.config=null] - Config snapshot at time of action
  * @param {object} [params.metrics=null] - Metrics snapshot at time of action
@@ -71,7 +73,8 @@ export function getAuditTrail(db, datasetId) {
 
 /**
  * Generate a structured fairness report from computed metrics.
- * Evaluates thresholds, flags violations, and assigns a risk level.
+ * Evaluates thresholds, flags violations with policy levels,
+ * detects disadvantaged groups, and assigns a risk level.
  *
  * @param {import('better-sqlite3').Database} db
  * @param {string} datasetId
@@ -99,6 +102,7 @@ export function generateReport(db, datasetId, profile, metrics, config) {
         value: null,
         threshold: null,
         severity: 'high',
+        policy_level: 'block',
         message: fairnessMetrics.error,
       });
       continue;
@@ -149,6 +153,9 @@ export function generateReport(db, datasetId, profile, metrics, config) {
   // Determine risk level
   const riskLevel = computeRiskLevel(allViolations);
 
+  // Detect disadvantaged groups
+  const disadvantagedGroups = detectDisadvantagedGroups(metrics);
+
   // Build report structure
   const report = {
     report_id: reportId,
@@ -164,6 +171,7 @@ export function generateReport(db, datasetId, profile, metrics, config) {
     },
     thresholds_used: thresholds,
     per_group_metrics: metrics.per_attribute,
+    disadvantaged_groups: disadvantagedGroups,
     violations: allViolations,
     violation_count: allViolations.length,
     risk_level: riskLevel,
@@ -183,6 +191,67 @@ export function generateReport(db, datasetId, profile, metrics, config) {
   }
 
   return report;
+}
+
+/**
+ * Detect the most disadvantaged group per metric per attribute.
+ * Returns an array of objects with worst_group, worst_value, distance_from_ref.
+ *
+ * @param {object} metrics - Computed metrics from fairnessMetrics
+ * @returns {object[]}
+ */
+function detectDisadvantagedGroups(metrics) {
+  const results = [];
+
+  for (const [attrName, attrData] of Object.entries(metrics.per_attribute || {})) {
+    const fairnessMetrics = attrData.fairness_metrics || {};
+    if (fairnessMetrics.error) continue;
+
+    const metricKeys = [
+      'statistical_parity_difference',
+      'disparate_impact_ratio',
+      'equal_opportunity_difference',
+      'average_odds_difference',
+    ];
+
+    for (const metricKey of metricKeys) {
+      let worstGroup = null;
+      let worstValue = null;
+      let worstDistance = -Infinity;
+
+      for (const [groupName, groupFairness] of Object.entries(fairnessMetrics)) {
+        const value = groupFairness[metricKey];
+        if (value === null || value === undefined) continue;
+
+        let distance;
+        if (metricKey === 'disparate_impact_ratio') {
+          // Distance from ideal (1.0) — lower is more disadvantaged
+          distance = Math.abs(1 - value);
+        } else {
+          // For SPD/EOD/AOD — negative values indicate disadvantage
+          distance = Math.abs(value);
+        }
+
+        if (distance > worstDistance) {
+          worstDistance = distance;
+          worstGroup = groupName;
+          worstValue = value;
+        }
+      }
+
+      if (worstGroup !== null) {
+        results.push({
+          attribute: attrName,
+          metric: metricKey,
+          worst_group: worstGroup,
+          worst_value: round(worstValue),
+          distance_from_ref: round(worstDistance),
+        });
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
@@ -225,8 +294,8 @@ export function getLatestReport(db, datasetId) {
 export function addToReviewQueue(db, datasetId, reportId, violations) {
   const stmt = db.prepare(`
     INSERT INTO fairness_review_queue
-      (id, dataset_id, report_id, metric_name, group_name, attribute, expected_range, actual_value, severity)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, dataset_id, report_id, metric_name, group_name, attribute, expected_range, actual_value, severity, policy_level)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertMany = db.transaction((items) => {
@@ -241,7 +310,8 @@ export function addToReviewQueue(db, datasetId, reportId, violations) {
         v.attribute,
         v.threshold_range || `threshold: ${v.threshold}`,
         v.value,
-        v.severity
+        v.severity,
+        v.policy_level || 'warning'
       );
     }
   });
@@ -341,7 +411,7 @@ export function updateReviewItem(db, itemId, update) {
 
 /**
  * Check if a metric value exceeds a symmetric threshold.
- * Adds a violation object if |value| > threshold.
+ * Adds a violation object with policy_level if |value| > threshold.
  */
 function checkThreshold(violations, { attribute, group, metric, value, threshold, check }) {
   if (value === null || threshold === null || threshold === undefined) return;
@@ -366,6 +436,7 @@ function checkThreshold(violations, { attribute, group, metric, value, threshold
       threshold,
       threshold_range: `[-${threshold}, +${threshold}]`,
       severity,
+      policy_level: severity === 'high' ? 'block' : 'warning',
       message: `${metric} of ${round(value)} for group "${group}" exceeds threshold ±${threshold}`,
     });
   }
@@ -387,6 +458,7 @@ function checkDisparateImpact(violations, { attribute, group, value, min, max })
       threshold: null,
       threshold_range: `[${min}, ${max}]`,
       severity,
+      policy_level: severity === 'high' ? 'block' : 'warning',
       message: `Disparate impact ratio of ${round(value)} for group "${group}" is outside fair range [${min}, ${max}]`,
     });
   }
