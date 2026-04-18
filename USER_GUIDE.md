@@ -84,7 +84,7 @@ Use this tab to audit datasets for bias and apply mitigation. You can:
 
 ### 8) Mock Launch
 
-Use this tab to start an execution scenario quickly.  
+Use this tab to start a mock execution scenario quickly.  
 Scenarios include safe runs, attack attempts, and control behaviors.
 
 ### 9) Incident
