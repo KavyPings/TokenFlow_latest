@@ -26,7 +26,7 @@ export function createAuth0Middleware() {
   // Production mode: real Auth0 JWT validation
   return auth({
     audience: process.env.AUTH0_AUDIENCE,
-    issuerBaseURL: (process.env.AUTH0_ISSUER || `https://${process.env.AUTH0_DOMAIN}/`).replace(/\/$/, ''),
+    issuerBaseURL: process.env.AUTH0_ISSUER.replace(/\/$/, ''),
     tokenSigningAlg: 'RS256',
   });
 }

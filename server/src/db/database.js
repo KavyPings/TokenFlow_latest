@@ -11,7 +11,7 @@ let db = null;
 export function getDb() {
   if (db) return db;
 
-  const dbPath = process.env.DATABASE_URL || './tokenflow.db';
+  const dbPath = process.env.DATABASE_URL;
   db = new Database(dbPath);
 
   // Enable WAL mode for better concurrent performance

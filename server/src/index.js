@@ -20,7 +20,7 @@ const __dirname = dirname(__filename);
 const CLIENT_DIST_PATH = resolve(__dirname, '..', '..', 'client', 'dist');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const LOCAL_DEV_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
@@ -32,7 +32,7 @@ const HARDCODED_ORIGINS = [
 ];
 const FRONTEND_ORIGINS = [
   ...HARDCODED_ORIGINS,
-  ...(process.env.FRONTEND_ORIGIN || '')
+  ...(process.env.FRONTEND_ORIGIN)
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean),
