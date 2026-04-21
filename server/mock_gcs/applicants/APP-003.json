@@ -1,0 +1,23 @@
+{
+  "id": "APP-003",
+  "name": "Elena Rodriguez",
+  "age": 52,
+  "email": "e.rodriguez@example.com",
+  "zip": "90210",
+  "state": "CA",
+  "employment_status": "employed",
+  "employer": "LA Unified School District",
+  "employment_years": 18,
+  "annual_income": 72000,
+  "monthly_income": 6000,
+  "monthly_debt": 980,
+  "loan_amount": 28000,
+  "loan_purpose": "education",
+  "credit_history_years": 22,
+  "protected_attributes": {
+    "gender": "F",
+    "race": "Hispanic",
+    "age_group": "50-59"
+  },
+  "avatar_seed": "Elena"
+}

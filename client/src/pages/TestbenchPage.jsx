@@ -6,6 +6,33 @@ const M = ({ icon, className = '', style }) => (
   <span className={`material-symbols-outlined ${className}`} style={style}>{icon}</span>
 );
 
+/**
+ * Returns a human-meaningful label for a test result, based on the scenario
+ * category and whether the test passed.
+ *
+ * Key insight: "PASSED" means the *guardrail* did its job.
+ *   - For ATTACK scenarios: PASSED = the attack was BLOCKED (good!)
+ *   - For SAFE scenarios: PASSED = the workflow ran SECURELY (good!)
+ *   - For CONTROL scenarios: PASSED = the control mechanism was ENFORCED (good!)
+ *   - FAILED in any case = a guardrail broke (bad!)
+ */
+function getResultLabel(result, scenario) {
+  if (!result) return null;
+  if (result.status === 'error') return { text: 'ERROR', color: 'var(--warning)', bg: 'rgba(251,191,36,0.12)' };
+  if (result.status === 'failed') return { text: 'FAILED', color: 'var(--error)', bg: 'rgba(255,180,171,0.1)' };
+
+  // result.status === 'passed' — interpret based on category
+  const category = scenario?.category || result.summary?.category || '';
+  if (category === 'attack') {
+    return { text: 'BLOCKED ✓', color: 'var(--success)', bg: 'rgba(52,211,153,0.1)', tooltip: 'The attack was correctly blocked by TokenFlow guardrails.' };
+  }
+  if (category === 'control') {
+    return { text: 'ENFORCED ✓', color: 'var(--success)', bg: 'rgba(52,211,153,0.1)', tooltip: 'The control mechanism worked correctly.' };
+  }
+  // safe or unknown
+  return { text: 'SECURE ✓', color: 'var(--success)', bg: 'rgba(52,211,153,0.1)', tooltip: 'Workflow ran cleanly with no violations.' };
+}
+
 export default function TestbenchPage() {
   const [scenarios, setScenarios] = useState([]);
   const [meta, setMeta] = useState({ scenarioCount: 0, invariantCount: 0 });
@@ -66,7 +93,6 @@ export default function TestbenchPage() {
   async function deleteUploadedScenario(scenarioId) {
     setRunning(`delete-${scenarioId}`);
     setError('');
-
     try {
       await api(`/api/workflows/upload/${scenarioId}`, { method: 'DELETE' });
       setSuiteResult(null);
@@ -76,7 +102,6 @@ export default function TestbenchPage() {
     } catch (err) {
       setError(err.message);
     }
-
     setRunning('');
   }
 
@@ -86,6 +111,7 @@ export default function TestbenchPage() {
     control: 'var(--warning)',
     uploaded: 'var(--primary)',
   };
+
   const scenarioCount = meta.scenarioCount || scenarios.length;
   const invariantCount = meta.invariantCount || 0;
 
@@ -107,29 +133,31 @@ export default function TestbenchPage() {
         </p>
       </div>
 
-      <div className="card p-6 mb-8">
+      {/* ── Key Insight Banner ── */}
+      <div className="card p-5 mb-6" style={{ borderColor: 'rgba(196,192,255,0.2)', background: 'rgba(196,192,255,0.04)' }}>
         <div className="flex items-start gap-4">
-          <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: 'rgba(166,230,255,0.1)' }}>
-            <M icon="info" style={{ fontSize: 20, color: 'var(--secondary)' }} />
+          <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: 'rgba(196,192,255,0.1)' }}>
+            <M icon="lightbulb" style={{ fontSize: 20, color: 'var(--primary)' }} />
           </div>
           <div>
-            <h4 className="text-sm font-bold font-headline mb-2">How the Testbench Works</h4>
+            <h4 className="text-sm font-bold font-headline mb-1">What does PASSED mean?</h4>
             <p className="text-xs leading-relaxed mb-3" style={{ color: 'var(--on-surface-variant)' }}>
-              Each scenario spawns a complete agent workflow with capability tokens, then asserts security invariants against the execution result. Attack scenarios intentionally attempt unauthorized cross-service access to verify that TokenFlow's guardrails hold.
+              Each scenario validates that TokenFlow's guardrails hold. <strong style={{ color: 'var(--on-surface)' }}>PASSED does not mean the attack succeeded</strong> — it means the security mechanism blocked it correctly. A <span style={{ color: 'var(--error)' }}>FAILED</span> result would mean a guardrail broke.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: 'var(--surface-container-high)', border: '1px solid rgba(70,69,85,0.1)' }}>
-                <M icon="play_circle" style={{ fontSize: 14, color: 'var(--primary)' }} />
-                <span className="text-[10px]" style={{ color: 'var(--on-surface-variant)' }}>Launches a real workflow with tokens</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: 'var(--surface-container-high)', border: '1px solid rgba(70,69,85,0.1)' }}>
-                <M icon="security" style={{ fontSize: 14, color: 'var(--warning)' }} />
-                <span className="text-[10px]" style={{ color: 'var(--on-surface-variant)' }}>Verifies token scope and access control</span>
-              </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: 'var(--surface-container-high)', border: '1px solid rgba(70,69,85,0.1)' }}>
-                <M icon="check_circle" style={{ fontSize: 14, color: 'var(--success)' }} />
-                <span className="text-[10px]" style={{ color: 'var(--on-surface-variant)' }}>Asserts invariants pass or fail</span>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { icon: 'gpp_bad', label: 'ATTACK + PASSED', desc: 'Attack was BLOCKED ✓', color: 'var(--error)', result: 'var(--success)' },
+                { icon: 'verified_user', label: 'SAFE + PASSED', desc: 'Ran SECURELY ✓', color: 'var(--success)', result: 'var(--success)' },
+                { icon: 'admin_panel_settings', label: 'CONTROL + PASSED', desc: 'Control ENFORCED ✓', color: 'var(--warning)', result: 'var(--success)' },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: 'var(--surface-container-high)', border: '1px solid rgba(70,69,85,0.1)' }}>
+                  <M icon={item.icon} style={{ fontSize: 14, color: item.color }} />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold" style={{ color: 'var(--on-surface-variant)' }}>{item.label}</p>
+                    <p className="text-[10px]" style={{ color: item.result }}>{item.desc}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -154,22 +182,24 @@ export default function TestbenchPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <M
-                  icon={suiteResult.status === 'passed' ? 'check_circle' : 'cancel'}
+                  icon={suiteResult.status === 'passed' ? 'verified_user' : 'cancel'}
                   style={{ fontSize: 28, color: suiteResult.status === 'passed' ? 'var(--success)' : 'var(--error)' }}
                 />
                 <div>
-                  <h3 className="text-lg font-bold font-headline">Suite {suiteResult.status === 'passed' ? 'Passed' : 'Failed'}</h3>
-                  <p className="text-xs font-mono" style={{ color: 'var(--on-surface-variant)' }}>{suiteResult.summary?.durationMs}ms</p>
+                  <h3 className="text-lg font-bold font-headline">
+                    {suiteResult.status === 'passed' ? 'All Guardrails Holding' : 'Suite Failed — Guardrail Breach'}
+                  </h3>
+                  <p className="text-xs font-mono" style={{ color: 'var(--on-surface-variant)' }}>{suiteResult.summary?.durationMs}ms total</p>
                 </div>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-4">
                 <div className="text-center">
                   <p className="text-xl font-bold font-headline" style={{ color: 'var(--success)' }}>{suiteResult.summary?.passed}</p>
-                  <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--outline)' }}>Passed</p>
+                  <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--outline)' }}>Guardrails OK</p>
                 </div>
                 <div className="text-center">
                   <p className="text-xl font-bold font-headline" style={{ color: 'var(--error)' }}>{suiteResult.summary?.failed}</p>
-                  <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--outline)' }}>Failed</p>
+                  <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--outline)' }}>Breached</p>
                 </div>
               </div>
             </div>
@@ -177,10 +207,12 @@ export default function TestbenchPage() {
         </motion.div>
       )}
 
+      {/* Scenario Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
         {scenarios.map((scenario, idx) => {
           const catColor = categoryColors[scenario.category] || 'var(--outline)';
           const matchingResult = results.find((result) => result.scenarioId === scenario.id || result.scenario_id === scenario.id);
+          const label = getResultLabel(matchingResult, scenario);
 
           return (
             <motion.div
@@ -202,15 +234,14 @@ export default function TestbenchPage() {
                     {scenario.category}
                   </span>
                 </div>
-                {matchingResult && (
+                {/* Semantic result label — not just PASSED/FAILED */}
+                {label && (
                   <span
                     className="text-[8px] font-bold uppercase tracking-[0.15em] px-2 py-0.5 rounded"
-                    style={{
-                      background: matchingResult.status === 'passed' ? 'rgba(52,211,153,0.1)' : 'rgba(255,180,171,0.1)',
-                      color: matchingResult.status === 'passed' ? 'var(--success)' : 'var(--error)',
-                    }}
+                    title={label.tooltip || ''}
+                    style={{ background: label.bg, color: label.color }}
                   >
-                    {matchingResult.status}
+                    {label.text}
                   </span>
                 )}
               </div>
@@ -221,10 +252,7 @@ export default function TestbenchPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className="text-[8px] font-bold uppercase tracking-[0.15em] px-2 py-0.5 rounded"
-                      style={{
-                        background: scenario.runnable ? 'rgba(52,211,153,0.1)' : 'rgba(255,180,171,0.1)',
-                        color: scenario.runnable ? 'var(--success)' : 'var(--error)',
-                      }}
+                      style={{ background: scenario.runnable ? 'rgba(52,211,153,0.1)' : 'rgba(255,180,171,0.1)', color: scenario.runnable ? 'var(--success)' : 'var(--error)' }}
                     >
                       {scenario.runnable ? 'Runnable Upload' : 'Invalid Upload'}
                     </span>
@@ -266,6 +294,7 @@ export default function TestbenchPage() {
         })}
       </div>
 
+      {/* Results Table */}
       {results.length > 0 && (
         <div className="card p-6">
           <div className="flex items-center justify-between mb-1">
@@ -275,12 +304,15 @@ export default function TestbenchPage() {
             </div>
             <span className="text-[10px] font-mono" style={{ color: 'var(--outline)' }}>{results.length} result{results.length !== 1 ? 's' : ''}</span>
           </div>
-          <p className="text-xs mb-5" style={{ color: 'var(--on-surface-variant)' }}>Click a result row to expand assertion details</p>
+          <p className="text-xs mb-5" style={{ color: 'var(--on-surface-variant)' }}>
+            Click any row to expand assertion details. <span style={{ color: 'var(--success)' }}>BLOCKED/SECURE/ENFORCED</span> = guardrail held. <span style={{ color: 'var(--error)' }}>FAILED</span> = guardrail broke.
+          </p>
 
-          <div className="grid gap-3 px-4 py-2 mb-2" style={{ gridTemplateColumns: '28px 2fr 0.8fr 0.6fr 0.6fr 0.5fr 28px' }}>
+          <div className="grid gap-3 px-4 py-2 mb-2" style={{ gridTemplateColumns: '28px 2fr 0.8fr 0.7fr 0.6fr 0.6fr 0.5fr 28px' }}>
             <span />
             <span className="text-[9px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--outline)' }}>Scenario</span>
             <span className="text-[9px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--outline)' }}>Run ID</span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--outline)' }}>Result</span>
             <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-center" style={{ color: 'var(--outline)' }}>Passed</span>
             <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-center" style={{ color: 'var(--outline)' }}>Failed</span>
             <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-right" style={{ color: 'var(--outline)' }}>Duration</span>
@@ -294,12 +326,16 @@ export default function TestbenchPage() {
               const passed = typeof result.passed === 'number' ? result.passed : result.summary?.passed || 0;
               const failed = typeof result.failed === 'number' ? result.failed : result.summary?.failed || 0;
 
+              // Find matching scenario for semantic label
+              const matchingScenario = scenarios.find((s) => s.id === (result.scenarioId || result.scenario_id));
+              const label = getResultLabel(result, matchingScenario);
+
               return (
                 <motion.div key={result.runId || result.id || idx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.03 }}>
                   <div
                     className="grid gap-3 items-center px-4 py-3.5 rounded-xl cursor-pointer transition-all hover:ring-1"
                     style={{
-                      gridTemplateColumns: '28px 2fr 0.8fr 0.6fr 0.6fr 0.5fr 28px',
+                      gridTemplateColumns: '28px 2fr 0.8fr 0.7fr 0.6fr 0.6fr 0.5fr 28px',
                       background: result.status === 'passed' ? 'var(--surface-container-high)' : 'rgba(255,180,171,0.04)',
                       border: result.status === 'passed' ? '1px solid rgba(70,69,85,0.12)' : '1px solid rgba(255,180,171,0.15)',
                       '--tw-ring-color': 'rgba(196,192,255,0.3)',
@@ -314,6 +350,12 @@ export default function TestbenchPage() {
                       <p className="text-xs font-bold truncate" style={{ color: 'var(--on-surface)' }}>{result.scenarioName || result.scenario_name}</p>
                     </div>
                     <p className="text-[10px] font-mono truncate" style={{ color: 'var(--outline)' }}>{(result.runId || result.id || '').slice(0, 12)}</p>
+                    {/* Semantic label in the result column */}
+                    {label ? (
+                      <span className="text-[9px] font-bold uppercase tracking-[0.1em] px-2 py-0.5 rounded" style={{ background: label.bg, color: label.color, whiteSpace: 'nowrap' }}>
+                        {label.text}
+                      </span>
+                    ) : <span />}
                     <p className="text-xs font-bold text-center" style={{ color: 'var(--success)' }}>{passed}</p>
                     <p className="text-xs font-bold text-center" style={{ color: failed > 0 ? 'var(--error)' : 'var(--outline)' }}>{failed}</p>
                     <p className="text-[10px] font-mono text-right" style={{ color: 'var(--outline)' }}>{result.durationMs || result.duration_ms}ms</p>

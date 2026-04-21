@@ -166,7 +166,9 @@ class TestbenchEngine {
    * Get all available test scenarios.
    */
   getScenarios() {
-    const baseScenarios = ALL_TASKS.map(t => ({
+    const baseScenarios = ALL_TASKS
+      .filter((scenario) => scenario.include_in_testbench !== false)
+      .map(t => ({
       id: t.id,
       name: t.name,
       description: t.description,

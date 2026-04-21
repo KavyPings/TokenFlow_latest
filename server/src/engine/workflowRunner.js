@@ -10,8 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/database.js';
 import { tokenEngine } from './tokenEngine.js';
 import { policyEngine } from './policyEngine.js';
-import { readCloudObject, callInternalApi, writeCloudObject, readRepo } from '../services/agentService.js';
-import { vaultService } from '../services/vaultService.js';
+import { readCloudObject, callInternalApi, writeCloudObject, sendDecisionEmail } from '../services/agentService.js';
 import { broadcast } from '../websocket/wsServer.js';
 import { evaluateGate, FairnessGateBlockedError } from '../fairness/services/executionGateService.js';
 
@@ -82,13 +81,18 @@ class WorkflowRunner {
     if (workflow.status === 'aborted' || workflow.status === 'completed') return;
 
     const taskData = JSON.parse(workflow.applicant_data);
-    const steps = policyEngine.getStepOrder();
+    const stepDefinitions = Array.isArray(taskData.steps) && taskData.steps.length > 0
+      ? taskData.steps
+      : policyEngine.getStepOrder().map((action) => ({ action }));
+    const stepOrder = stepDefinitions.map((step) => step.action);
     const approvedSteps = new Set(taskData.approved_steps || []);
+    const writeStepIndex = stepOrder.findIndex((stepAction) => stepAction === 'WRITE_OBJECT');
+    const maliciousInjectionStep = writeStepIndex >= 0 ? writeStepIndex : 2;
 
     // ── MALICIOUS STEP INJECTION ──────────────────────────────
     // If the task is malicious and we've just finished step 2 (CALL_INTERNAL_API),
     // inject the unauthorized READ_REPO attempt before WRITE_OBJECT
-    if (taskData.malicious && stepIndex === 2 && taskData.malicious_step && !approvedSteps.has(stepIndex)) {
+    if (taskData.malicious && stepIndex === maliciousInjectionStep && taskData.malicious_step && !approvedSteps.has(stepIndex)) {
       console.log(`[WORKFLOW] ⚠ Compromised agent attempting unauthorized step...`);
       await this._attemptMaliciousStep(workflowId, taskData, stepIndex, opts);
       return; // Execution halts — the malicious step was blocked
@@ -110,7 +114,7 @@ class WorkflowRunner {
       return;
     }
 
-    const actionType = steps[stepIndex];
+    const actionType = stepOrder[stepIndex];
 
     if (!actionType) {
       this._updateWorkflow(workflowId, 'completed', stepIndex);
@@ -121,14 +125,14 @@ class WorkflowRunner {
 
     // Get step permissions from policy engine
     const stepPermissions = policyEngine.getStepPermissions(actionType);
-    const stepDef = taskData.steps?.[stepIndex];
+    const stepDef = stepDefinitions[stepIndex];
 
     // Get previous token ID for chain linking
     const chain = tokenEngine.getTokenChain(workflowId);
     const parentTokenId = chain.length > 0 ? chain[chain.length - 1].id : null;
 
     // Mint token for this step
-    const policy = policyEngine.canMint(actionType, { taskData });
+    const policy = policyEngine.canMint(actionType, { taskData }, stepOrder);
     if (!policy.allowed) {
       console.error(`[WORKFLOW] Policy denied minting for ${actionType}: ${policy.reason}`);
       return;
@@ -187,7 +191,7 @@ class WorkflowRunner {
         stepIndex,
         token,
         tokenContext,
-        steps,
+        stepOrder,
         opts
       );
       if (escalationBlocked) {
@@ -205,6 +209,23 @@ class WorkflowRunner {
       if (result._paused) {
         this._updateWorkflow(workflowId, 'paused', stepIndex);
         return; // Wait for human review
+      }
+
+      if (actionType === 'CALL_INTERNAL_API' && taskData.enforce_fairness_gate && !approvedSteps.has(stepIndex)) {
+        const flags = result?.fairness_flags || {};
+        const hasFairnessViolation = Object.values(flags).some(Boolean);
+        if (hasFairnessViolation) {
+          tokenEngine.flagToken(token.id, 'FAIRNESS_FLAG', {
+            summary: `Protected-attribute fairness risk detected for ${taskData.applicant?.name || 'applicant'}.`,
+            attempted_action: actionType,
+            attempted_service: stepDef?.service || stepPermissions?.service,
+            attempted_resource: stepDef?.resource || stepPermissions?.resource,
+            fairness_flags: flags,
+            taskData: { id: taskData.id, name: taskData.name },
+          });
+          this._updateWorkflow(workflowId, 'paused', stepIndex);
+          return;
+        }
       }
 
       // Consume (burn) the token
@@ -446,19 +467,124 @@ class WorkflowRunner {
 
   async _executeAction(actionType, taskData, workflowId, tokenId, stepIndex) {
     const stepDef = taskData.steps?.[stepIndex];
+    // Gather context from previous steps for Gemini
+    const workflow = this.getWorkflow(workflowId);
+    let context = {};
+    try { context = JSON.parse(workflow?.step_context || '{}'); } catch { context = {}; }
 
     switch (actionType) {
-      case 'READ_OBJECT':
-        return readCloudObject(stepDef?.resource || 'default/input.json');
+      case 'READ_OBJECT': {
+        const result = await readCloudObject(stepDef?.resource || 'default/input.json', taskData);
+        // Persist context for next step
+        this._persistStepContext(workflowId, { ...context, readResult: result.data });
+        return result;
+      }
 
-      case 'CALL_INTERNAL_API':
-        return callInternalApi(stepDef?.resource || 'api/process');
+      case 'CALL_INTERNAL_API': {
+        const result = await callInternalApi(stepDef?.resource || 'api/credit/score', taskData, context);
+        // Broadcast fairness flag if AI detected protected attribute risk
+        const flags = result.fairness_flags || {};
+        const hasFairnessRisk = Object.values(flags).some(Boolean);
+        if (hasFairnessRisk) {
+          broadcast({
+            type: 'FAIRNESS_FLAG',
+            payload: {
+              workflowId,
+              applicant: taskData.applicant?.name || 'Applicant',
+              flags,
+              score: result.data?.credit_score,
+              recommendation: result.data?.recommendation,
+              timestamp: new Date().toISOString(),
+            },
+          });
+          console.log(`[WORKFLOW] ⚠ Fairness signal detected for ${taskData.applicant?.name}`);
+        }
+        this._persistStepContext(workflowId, { ...context, creditResult: result.data, fairnessFlags: flags });
+        return result;
+      }
 
-      case 'WRITE_OBJECT':
-        return writeCloudObject(stepDef?.resource || 'default/output.json');
+      case 'FAIRNESS_CHECK': {
+        const flags = context.fairnessFlags || {};
+        const hasRisk = Object.values(flags).some(Boolean);
+        const result = {
+          success: true,
+          action: 'FAIRNESS_CHECK',
+          service: stepDef?.service || 'fairness-engine',
+          resource: stepDef?.resource || 'fairness/inline',
+          data: {
+            has_risk: hasRisk,
+            flags,
+            mode: taskData.enforce_fairness_gate ? 'enforce' : 'observe',
+            recommendation: hasRisk ? 'human_review' : 'clear',
+          },
+          message: hasRisk
+            ? 'Fairness risk detected and routed to review.'
+            : 'Fairness check passed with no inline risk flags.',
+        };
+        this._persistStepContext(workflowId, { ...context, fairnessResult: result.data });
+        return result;
+      }
+
+      case 'WRITE_OBJECT': {
+        const result = await writeCloudObject(stepDef?.resource || 'default/output.json', taskData, context);
+        this._persistStepContext(workflowId, { ...context, decisionResult: result.data });
+        // Broadcast final decision
+        broadcast({
+          type: 'DECISION_MADE',
+          payload: {
+            workflowId,
+            applicant: taskData.applicant?.name || 'Applicant',
+            decision: result.data?.decision,
+            amount: result.data?.amount_approved,
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return result;
+      }
+
+      case 'SEND_EMAIL': {
+        const result = await sendDecisionEmail(
+          stepDef?.resource || 'sendgrid/mail.send',
+          { ...taskData, workflowId },
+          context
+        );
+        this._persistStepContext(workflowId, { ...context, emailResult: result.data });
+        return result;
+      }
+
+      case 'WRITE_AUDIT_LOG': {
+        const result = {
+          success: true,
+          action: 'WRITE_AUDIT_LOG',
+          service: stepDef?.service || 'audit-log',
+          resource: stepDef?.resource || `audit/${workflowId}.json`,
+          data: {
+            workflow_id: workflowId,
+            applicant_id: taskData.applicant?.id || null,
+            decision: context.decisionResult?.decision || null,
+            email_queued: Boolean(context.emailResult?.queued),
+            fairness_flags: context.fairnessFlags || {},
+            recorded_at: new Date().toISOString(),
+          },
+          message: 'Final audit record captured for loan decision workflow.',
+        };
+        this._persistStepContext(workflowId, { ...context, auditResult: result.data });
+        return result;
+      }
 
       default:
         throw new Error(`Unknown action: ${actionType}`);
+    }
+  }
+
+  _persistStepContext(workflowId, context) {
+    try {
+      const db = getDb();
+      // Store step context as JSON in the workflow row (reuse applicant_data column safely)
+      db.prepare('UPDATE workflows SET step_context = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(context), new Date().toISOString(), workflowId);
+    } catch {
+      // step_context column may not exist in older schema — safe to ignore
     }
   }
 
@@ -558,3 +684,4 @@ class WorkflowRunner {
 }
 
 export const workflowRunner = new WorkflowRunner();
+

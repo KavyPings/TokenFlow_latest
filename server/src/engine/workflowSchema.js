@@ -38,12 +38,12 @@ export const WORKFLOW_SCHEMA = {
         properties: {
           action: {
             type: 'string',
-            enum: ['READ_OBJECT', 'CALL_INTERNAL_API', 'WRITE_OBJECT'],
+            enum: ['READ_OBJECT', 'CALL_INTERNAL_API', 'FAIRNESS_CHECK', 'WRITE_OBJECT', 'SEND_EMAIL', 'WRITE_AUDIT_LOG'],
             description: 'The capability action type',
           },
           service: {
             type: 'string',
-            enum: ['gcs', 'internal-api'],
+            enum: ['gcs', 'internal-api', 'fairness-engine', 'email', 'audit-log'],
             description: 'Target service (must be authorized)',
           },
           resource: {
@@ -52,7 +52,7 @@ export const WORKFLOW_SCHEMA = {
           },
           actionVerb: {
             type: 'string',
-            enum: ['read', 'invoke', 'write'],
+            enum: ['read', 'invoke', 'evaluate', 'write', 'send'],
             description: 'Action verb matching the action type',
           },
         },
@@ -91,10 +91,17 @@ export function validateWorkflow(definition) {
   } else if (definition.steps.length > 10) {
     errors.push('steps cannot exceed 10 entries.');
   } else {
-    const allowedActions = ['READ_OBJECT', 'CALL_INTERNAL_API', 'WRITE_OBJECT'];
-    const allowedServices = ['gcs', 'internal-api'];
-    const allowedVerbs = ['read', 'invoke', 'write'];
-    const actionVerbMap = { READ_OBJECT: 'read', CALL_INTERNAL_API: 'invoke', WRITE_OBJECT: 'write' };
+    const allowedActions = ['READ_OBJECT', 'CALL_INTERNAL_API', 'FAIRNESS_CHECK', 'WRITE_OBJECT', 'SEND_EMAIL', 'WRITE_AUDIT_LOG'];
+    const allowedServices = ['gcs', 'internal-api', 'fairness-engine', 'email', 'audit-log'];
+    const allowedVerbs = ['read', 'invoke', 'evaluate', 'write', 'send'];
+    const actionVerbMap = {
+      READ_OBJECT: 'read',
+      CALL_INTERNAL_API: 'invoke',
+      FAIRNESS_CHECK: 'evaluate',
+      WRITE_OBJECT: 'write',
+      SEND_EMAIL: 'send',
+      WRITE_AUDIT_LOG: 'write',
+    };
     const unauthorizedServices = policyEngine.getUnauthorizedServices();
 
     for (const [i, step] of definition.steps.entries()) {

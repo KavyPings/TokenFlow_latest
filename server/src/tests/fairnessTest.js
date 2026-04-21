@@ -302,7 +302,7 @@ function testAuditService() {
   assert(queue.items[0].severity === 'high', 'First item is high severity');
 
   // Cleanup test data
-  db.prepare('DELETE FROM fairness_audit_logs WHERE dataset_id = ?').run(datasetId);
+  // fairness_audit_logs is immutable by design; do not delete from it in tests.
   db.prepare('DELETE FROM fairness_reports WHERE dataset_id = ?').run(datasetId);
   db.prepare('DELETE FROM fairness_review_queue WHERE dataset_id = ?').run(datasetId);
 }

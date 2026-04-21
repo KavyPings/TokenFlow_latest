@@ -1,8 +1,8 @@
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
 // Auth0 Token Vault Service
-// Manages credential retrieval via Token Vault exchange flow
-// Agent NEVER accesses credentials directly — all through vault proxy
-// ═══════════════════════════════════════════════════════════
+// Manages credential retrieval via Token Vault exchange flow.
+// Agent NEVER accesses credentials directly - all through vault proxy.
+// ===========================================================
 
 import axios from 'axios';
 import { getDb } from '../db/database.js';
@@ -16,12 +16,12 @@ class VaultService {
   }
 
   /**
-   * Get a credential from Token Vault via RFC 8693 token exchange
-   * In mock mode, returns a simulated credential response
-   * 
-   * @param {string} serviceName - e.g., 'gcs-service-account', 'internal-api-key'
-   * @param {string} userAccessToken - Auth0 access token for the user
-   * @param {string} connectionName - Auth0 connection name (e.g., 'google-oauth2')
+   * Get a credential from Token Vault via RFC 8693 token exchange.
+   * In mock mode, returns a simulated credential response.
+   *
+   * @param {string} serviceName
+   * @param {string|null} userAccessToken
+   * @param {string|null} connectionName
    */
   async getCredential(serviceName, userAccessToken = null, connectionName = null) {
     this.recordAccess(serviceName);
@@ -30,12 +30,11 @@ class VaultService {
       return this._exchangeViaAuth0(serviceName, userAccessToken, connectionName);
     }
 
-    // Mock mode: simulate vault retrieval
     return this._mockCredential(serviceName);
   }
 
   /**
-   * Perform real Auth0 Token Vault exchange (RFC 8693)
+   * Perform real Auth0 Token Vault exchange (RFC 8693).
    */
   async _exchangeViaAuth0(serviceName, userAccessToken, connectionName) {
     try {
@@ -65,7 +64,7 @@ class VaultService {
   }
 
   /**
-   * Mock credential retrieval for demo/local development
+   * Mock credential retrieval for demo/local development.
    */
   _mockCredential(serviceName) {
     const mockCredentials = {
@@ -73,21 +72,28 @@ class VaultService {
         success: true,
         service: 'gcs-service-account',
         method: 'token_vault_mock',
-        note: 'GCS Service Account credential securely retrieved from Auth0 Token Vault — agent never sees raw key',
+        note: 'GCS credential retrieved through vault brokering. Agent never sees the key.',
         retrieved_at: new Date().toISOString(),
       },
       'internal-api-key': {
         success: true,
         service: 'internal-api-key',
         method: 'token_vault_mock',
-        note: 'Internal API key securely retrieved from Auth0 Token Vault — agent never sees raw key',
+        note: 'Internal API key retrieved through vault brokering. Agent never sees the key.',
         retrieved_at: new Date().toISOString(),
       },
       'source-control-token': {
         success: true,
         service: 'source-control-token',
         method: 'token_vault_mock',
-        note: 'Source Control token securely stored in Auth0 Token Vault — agent access PROHIBITED',
+        note: 'Source control credential is locked in vault and should never be used by agents.',
+        retrieved_at: new Date().toISOString(),
+      },
+      'sendgrid-api-key': {
+        success: true,
+        service: 'sendgrid-api-key',
+        method: 'token_vault_mock',
+        note: 'SendGrid key retrieved through vault brokering. Agent never receives the raw key.',
         retrieved_at: new Date().toISOString(),
       },
     };
@@ -97,7 +103,7 @@ class VaultService {
   }
 
   /**
-   * List all stored credentials (names only, never values)
+   * List all stored credentials (names only, never values).
    */
   listCredentials() {
     const db = getDb();
@@ -105,7 +111,7 @@ class VaultService {
   }
 
   /**
-   * Record that a credential was accessed
+   * Record that a credential was accessed.
    */
   recordAccess(serviceName) {
     const db = getDb();
@@ -114,7 +120,7 @@ class VaultService {
   }
 
   /**
-   * Get vault connection status
+   * Get vault connection status.
    */
   getStatus() {
     return {
@@ -124,7 +130,7 @@ class VaultService {
       credentials_count: this.listCredentials().length,
       message: this.useAuth0
         ? 'Connected to Auth0 Token Vault'
-        : 'Running in mock mode — configure AUTH0 env vars for production',
+        : 'Running in mock mode - configure AUTH0 env vars for production',
     };
   }
 }

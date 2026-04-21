@@ -78,7 +78,7 @@ describe('Testbench Engine', () => {
   });
 
   it('should keep every built-in mock workflow aligned with its documented outcome', async () => {
-    for (const scenario of ALL_TASKS) {
+    for (const scenario of ALL_TASKS.filter((item) => item.include_in_testbench !== false)) {
       const result = await testbenchEngine.runScenario(scenario.id);
       assert.equal(
         result.workflowStatus,

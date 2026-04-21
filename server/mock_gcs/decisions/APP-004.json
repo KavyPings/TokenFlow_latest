@@ -1,0 +1,14 @@
+{
+  "decision": "declined",
+  "amount_approved": null,
+  "interest_rate": null,
+  "conditions": [],
+  "decline_reasons": [
+    "Credit score below minimum threshold",
+    "Debt-to-income ratio exceeds limit"
+  ],
+  "decision_letter": "Dear David Chen,\n\nThank you for your loan application. After careful review, we have been unable to approve your application at this time.\n\nYou have the right to know why your application was not approved. Please contact us for an adverse action notice.",
+  "decided_at": "2026-04-20T21:00:38.990Z",
+  "recommendation": "approve",
+  "score": null
+}

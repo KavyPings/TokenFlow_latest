@@ -1,52 +1,63 @@
-// ═══════════════════════════════════════════════════════════
-// Agent Service — Simulates cloud agent actions
-// Each action goes through the vault proxy (never direct creds)
-// ═══════════════════════════════════════════════════════════
+// ===========================================================
+// Agent Service - AI-powered cloud agent actions
+// Credentials are always brokered through vault services.
+// ===========================================================
 
 import { vaultService } from './vaultService.js';
+import { runGeminiStep } from './geminiService.js';
+import { readApplicantRecord, writeDecisionRecord } from './gcsService.js';
+import { sendDecisionEmail as sendDecisionEmailViaProvider } from './emailService.js';
 
 /**
- * Simulate reading an object from cloud storage
- * Credential: gcs-service-account (retrieved via vault proxy)
+ * Read an applicant record from cloud storage.
  */
-export async function readCloudObject(resource) {
+export async function readCloudObject(resource, taskData = {}) {
   const credential = await vaultService.getCredential('gcs-service-account');
+  if (!credential.success) throw new Error('Failed to retrieve GCS credential from Token Vault');
 
-  if (!credential.success) {
-    throw new Error('Failed to retrieve GCS credential from Token Vault');
-  }
+  const fallbackApplicant = taskData.applicant || { id: 'APP-001', name: 'Applicant' };
+  const applicantId = fallbackApplicant.id || 'APP-001';
+  const gcsResult = await readApplicantRecord(applicantId, resource);
+  const applicant = gcsResult.data || fallbackApplicant;
 
-  console.log(`[AGENT] Reading object from cloud storage: ${resource}`);
+  console.log(`[AGENT] Reading applicant record: ${resource}`);
+
+  const aiResult = await runGeminiStep('READ_OBJECT', applicant, {});
 
   return {
     success: true,
     action: 'READ_OBJECT',
     service: 'gcs',
-    resource,
+    resource: gcsResult.objectPath || resource,
     data: {
-      bucket: 'agent-data-lake',
-      object: resource,
-      size_bytes: 2048576,
+      bucket: 'loan-applicants',
+      object: gcsResult.objectPath || resource,
+      size_bytes: JSON.stringify(applicant).length,
       content_type: 'application/json',
-      content_preview: '{"records": [...], "metadata": {"source": "iot-sensor-feed", "count": 1247}}',
+      applicant_id: applicant.id,
+      applicant_name: applicant.name,
+      loan_purpose: applicant.loan_purpose,
+      loan_amount: applicant.loan_amount,
+      storage_mode: gcsResult.mode,
+      ...aiResult,
     },
     credential_source: credential.method,
-    message: `Successfully read object "${resource}" from cloud storage`,
+    message: `Applicant record loaded: ${applicant.name} - ${aiResult.summary || 'Data loaded successfully.'}`,
+    gemini_used: aiResult._real_gemini || false,
   };
 }
 
 /**
- * Simulate calling an internal API endpoint
- * Credential: internal-api-key (retrieved via vault proxy)
+ * Call the credit scoring API via Gemini.
  */
-export async function callInternalApi(endpoint) {
+export async function callInternalApi(endpoint, taskData = {}, context = {}) {
   const credential = await vaultService.getCredential('internal-api-key');
+  if (!credential.success) throw new Error('Failed to retrieve Internal API credential from Token Vault');
 
-  if (!credential.success) {
-    throw new Error('Failed to retrieve Internal API credential from Token Vault');
-  }
+  const applicant = taskData.applicant || { id: 'APP-001', name: 'Applicant' };
+  console.log(`[AGENT] Credit scoring via Gemini for ${applicant.name}: ${endpoint}`);
 
-  console.log(`[AGENT] Calling internal API: ${endpoint}`);
+  const aiResult = await runGeminiStep('CALL_INTERNAL_API', applicant, context);
 
   return {
     success: true,
@@ -55,57 +66,115 @@ export async function callInternalApi(endpoint) {
     endpoint,
     data: {
       status: 200,
-      response: {
-        processed_records: 1247,
-        anomalies_detected: 3,
-        processing_time_ms: 342,
-        result_id: `res_${Date.now().toString(36)}`,
-      },
+      credit_score: aiResult.score,
+      risk_tier: aiResult.risk_tier,
+      confidence: aiResult.confidence,
+      approval_probability: aiResult.approval_probability,
+      recommendation: aiResult.recommendation,
+      reasoning: aiResult.reasoning,
+      fairness_flags: aiResult.protected_attribute_risk || {},
+      processing_time_ms: aiResult.latency_ms || 300,
+      model: 'gemini-1.5-flash',
+      result_id: `score_${Date.now().toString(36)}`,
     },
     credential_source: credential.method,
-    message: `Successfully called internal API "${endpoint}"`,
+    message: `Credit score: ${aiResult.score} (${aiResult.risk_tier} risk) - ${aiResult.recommendation}`,
+    gemini_used: aiResult._real_gemini || false,
+    fairness_flags: aiResult.protected_attribute_risk || {},
   };
 }
 
 /**
- * Simulate writing an object to cloud storage
- * Credential: gcs-service-account (retrieved via vault proxy)
+ * Write final decision record to storage.
  */
-export async function writeCloudObject(resource, data = {}) {
+export async function writeCloudObject(resource, taskData = {}, context = {}) {
   const credential = await vaultService.getCredential('gcs-service-account');
+  if (!credential.success) throw new Error('Failed to retrieve GCS credential from Token Vault');
 
-  if (!credential.success) {
-    throw new Error('Failed to retrieve GCS credential from Token Vault');
-  }
+  const applicant = taskData.applicant || { id: 'APP-001', name: 'Applicant' };
+  console.log(`[AGENT] Writing loan decision for ${applicant.name}: ${resource}`);
 
-  console.log(`[AGENT] Writing object to cloud storage: ${resource}`);
+  const aiResult = await runGeminiStep('WRITE_OBJECT', applicant, context);
+  const payload = {
+    decision: aiResult.decision,
+    amount_approved: aiResult.amount_approved,
+    interest_rate: aiResult.interest_rate,
+    conditions: aiResult.conditions || [],
+    decline_reasons: aiResult.decline_reasons || [],
+    decision_letter: aiResult.decision_letter || '',
+    decided_at: aiResult.decided_at,
+    recommendation: context.creditResult?.recommendation || null,
+    score: context.creditResult?.score || null,
+  };
+
+  const persisted = await writeDecisionRecord(applicant.id || 'APP-001', resource, payload);
 
   return {
     success: true,
     action: 'WRITE_OBJECT',
     service: 'gcs',
-    resource,
+    resource: persisted.objectPath || resource,
     data: {
-      bucket: 'agent-results',
-      object: resource,
-      bytes_written: 1024,
+      bucket: 'loan-decisions',
+      object: persisted.objectPath || resource,
+      decision: aiResult.decision,
+      amount_approved: aiResult.amount_approved,
+      interest_rate: aiResult.interest_rate,
+      conditions: aiResult.conditions || [],
+      decline_reasons: aiResult.decline_reasons || [],
+      decided_at: aiResult.decided_at,
+      bytes_written: persisted.bytesWritten,
       version: `v_${Date.now().toString(36)}`,
+      storage_mode: persisted.mode,
     },
     credential_source: credential.method,
-    message: `Successfully wrote results to "${resource}" in cloud storage`,
+    message: `Loan decision written: ${String(aiResult.decision || 'processed').toUpperCase()} for ${applicant.name}`,
+    gemini_used: aiResult._real_gemini || false,
   };
 }
 
 /**
- * UNAUTHORIZED: Simulate agent attempting to read from source control
- * This should NEVER succeed in a properly secured system
- * The agent attempts this when compromised / acting maliciously
+ * Send the final decision email via vault-brokered provider access.
+ */
+export async function sendDecisionEmail(resource, taskData = {}, context = {}) {
+  const applicant = taskData.applicant || { id: 'APP-001', name: 'Applicant', email: 'applicant@example.com' };
+  const decision = context.decisionResult || {};
+  const aiEmailDraft = await runGeminiStep('SEND_NOTIFICATION', applicant, { decision });
+
+  const sendResult = await sendDecisionEmailViaProvider({
+    to: aiEmailDraft.to || applicant.email || 'applicant@example.com',
+    subject: aiEmailDraft.subject || `Loan decision for ${applicant.name}`,
+    preview: aiEmailDraft.preview || 'Your decision is now available.',
+    decision,
+    workflowId: taskData.workflowId,
+  });
+
+  return {
+    success: true,
+    action: 'SEND_EMAIL',
+    service: 'email',
+    resource: resource || 'sendgrid/mail.send',
+    data: {
+      to: aiEmailDraft.to || applicant.email,
+      subject: aiEmailDraft.subject,
+      preview: aiEmailDraft.preview,
+      provider: sendResult.provider,
+      queued: sendResult.queued,
+      mode: sendResult.mode,
+      message_id: sendResult.messageId,
+      estimated_delivery: aiEmailDraft.estimated_delivery,
+    },
+    credential_source: 'vault_brokered_sendgrid',
+    message: `Decision email queued for ${applicant.name}`,
+    gemini_used: aiEmailDraft._real_gemini || false,
+  };
+}
+
+/**
+ * UNAUTHORIZED: Agent attempts to read from source control.
  */
 export async function readRepo(resource) {
-  console.log(`[AGENT] ⚠ ATTEMPTING UNAUTHORIZED repo access: ${resource}`);
-
-  // Even attempting to get the credential should be logged
-  // The vault proxy would block this, but we simulate the attempt
+  console.log(`[AGENT] WARNING: attempting unauthorized repo access: ${resource}`);
   return {
     success: false,
     action: 'READ_REPO',

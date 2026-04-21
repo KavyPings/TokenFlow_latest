@@ -58,6 +58,30 @@ router.get('/results', (req, res) => {
   res.json({ success: true, results, count: results.length });
 });
 
+// GET /api/testbench/history
+// Lightweight historical trend view for dashboard/reporting.
+router.get('/history', (req, res) => {
+  const limit = parseInt(req.query.limit) || 100;
+  const runs = testbenchEngine.getResults(limit);
+  const history = runs.map((run) => ({
+    runId: run.id,
+    scenarioId: run.scenario_id,
+    scenarioName: run.scenario_name,
+    status: run.status,
+    startedAt: run.started_at,
+    completedAt: run.completed_at,
+    durationMs: run.duration_ms,
+    passed: run.summary?.passed ?? run.passed ?? 0,
+    failed: run.summary?.failed ?? run.failed ?? 0,
+  }));
+
+  res.json({
+    success: true,
+    history,
+    count: history.length,
+  });
+});
+
 // ─── GET /api/testbench/results/:id ──────────────────────
 // Get a specific test run result
 router.get('/results/:id', (req, res) => {

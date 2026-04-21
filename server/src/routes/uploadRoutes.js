@@ -7,8 +7,23 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/database.js';
 import { validateWorkflow, sanitizeWorkflow, getTemplates, WORKFLOW_SCHEMA } from '../engine/workflowSchema.js';
 import { workflowRunner } from '../engine/workflowRunner.js';
+import { z } from 'zod';
 
 const router = Router();
+
+const stepInputSchema = z.object({
+  action: z.enum(['READ_OBJECT', 'CALL_INTERNAL_API', 'FAIRNESS_CHECK', 'WRITE_OBJECT', 'SEND_EMAIL', 'WRITE_AUDIT_LOG']),
+  service: z.enum(['gcs', 'internal-api', 'fairness-engine', 'email', 'audit-log']),
+  resource: z.string().min(1).max(200),
+  actionVerb: z.enum(['read', 'invoke', 'evaluate', 'write', 'send']),
+});
+
+const workflowUploadSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  agent: z.string().optional(),
+  steps: z.array(stepInputSchema).min(1).max(10),
+}).passthrough();
 
 // ─── POST /api/workflows/upload ──────────────────────────
 // Validate and store a workflow definition
@@ -19,9 +34,18 @@ router.post('/upload', (req, res) => {
       return res.status(400).json({ error: 'Missing workflow definition in request body' });
     }
 
-    const validation = validateWorkflow(definition);
-    const sanitized = validation.valid ? sanitizeWorkflow(definition) : null;
-    const storedDefinition = sanitized || definition;
+    const schemaResult = workflowUploadSchema.safeParse(definition);
+    if (!schemaResult.success) {
+      return res.status(400).json({
+        error: 'INVALID_WORKFLOW_SCHEMA',
+        details: schemaResult.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`),
+      });
+    }
+
+    const normalizedDefinition = schemaResult.data;
+    const validation = validateWorkflow(normalizedDefinition);
+    const sanitized = validation.valid ? sanitizeWorkflow(normalizedDefinition) : null;
+    const storedDefinition = sanitized || normalizedDefinition;
     const id = `uwf_${uuidv4().slice(0, 12)}`;
     const now = new Date().toISOString();
     const normalizedName = String(storedDefinition?.name || 'Untitled Workflow').slice(0, 100).trim() || 'Untitled Workflow';

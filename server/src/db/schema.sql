@@ -7,6 +7,7 @@
 -- ═══════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS tokens (
   id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL DEFAULT 'default',
   workflow_id TEXT NOT NULL,
   action_type TEXT NOT NULL,
   resource_id TEXT,
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 -- ═══════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL DEFAULT 'default',
   token_id TEXT NOT NULL,
   workflow_id TEXT NOT NULL,
   event_type TEXT NOT NULL,
@@ -39,9 +41,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 -- ═══════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS workflows (
   id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL DEFAULT 'default',
   name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
   applicant_data TEXT DEFAULT '{}',
+  step_context TEXT DEFAULT '{}',
   workflow_type TEXT NOT NULL DEFAULT 'mission',
   hidden_from_chain INTEGER NOT NULL DEFAULT 0,
   current_step INTEGER DEFAULT 0,
@@ -67,6 +71,7 @@ CREATE TABLE IF NOT EXISTS vault_credentials (
 -- ═══════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS test_runs (
   id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL DEFAULT 'default',
   scenario_id TEXT NOT NULL,
   scenario_name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'running',
@@ -84,6 +89,7 @@ CREATE TABLE IF NOT EXISTS test_runs (
 -- ═══════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS uploaded_workflows (
   id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL DEFAULT 'default',
   name TEXT NOT NULL,
   description TEXT DEFAULT '',
   definition TEXT NOT NULL,

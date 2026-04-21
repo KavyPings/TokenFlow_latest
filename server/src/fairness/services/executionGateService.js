@@ -122,7 +122,7 @@ export function evaluateGate(db, opts = {}) {
  * @returns {'shadow'|'enforce'}
  */
 export function getGateMode() {
-  const envMode = process.env.FAIRNESS_GATE_MODE.toLowerCase().trim();
+  const envMode = String(process.env.FAIRNESS_GATE_MODE || 'shadow').toLowerCase().trim();
   return envMode === 'enforce' ? 'enforce' : 'shadow';
 }
 

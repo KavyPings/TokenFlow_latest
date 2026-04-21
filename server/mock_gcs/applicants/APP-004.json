@@ -1,0 +1,23 @@
+{
+  "id": "APP-004",
+  "name": "David Chen",
+  "age": 41,
+  "email": "d.chen@example.com",
+  "zip": "98101",
+  "state": "WA",
+  "employment_status": "employed",
+  "employer": "Cascade Financial Services",
+  "employment_years": 12,
+  "annual_income": 138000,
+  "monthly_income": 11500,
+  "monthly_debt": 2100,
+  "loan_amount": 75000,
+  "loan_purpose": "real estate",
+  "credit_history_years": 15,
+  "protected_attributes": {
+    "gender": "M",
+    "race": "East Asian",
+    "age_group": "40-49"
+  },
+  "avatar_seed": "DavidC"
+}

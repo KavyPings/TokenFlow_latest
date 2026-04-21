@@ -42,8 +42,47 @@ export function getDb() {
     db.exec("ALTER TABLE workflows ADD COLUMN hidden_from_chain INTEGER NOT NULL DEFAULT 0");
   }
 
+  try {
+    db.prepare('SELECT step_context FROM workflows LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE workflows ADD COLUMN step_context TEXT DEFAULT '{}'");
+  }
+
+  try {
+    db.prepare('SELECT workspace_id FROM workflows LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE workflows ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'");
+  }
+
   db.exec("UPDATE workflows SET workflow_type = 'mission' WHERE workflow_type IS NULL OR workflow_type = ''");
   db.exec('UPDATE workflows SET hidden_from_chain = 0 WHERE hidden_from_chain IS NULL');
+  db.exec("UPDATE workflows SET step_context = '{}' WHERE step_context IS NULL OR step_context = ''");
+  db.exec("UPDATE workflows SET workspace_id = 'default' WHERE workspace_id IS NULL OR workspace_id = ''");
+
+  try {
+    db.prepare('SELECT workspace_id FROM tokens LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE tokens ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'");
+  }
+  db.exec("UPDATE tokens SET workspace_id = 'default' WHERE workspace_id IS NULL OR workspace_id = ''");
+
+  try {
+    db.prepare('SELECT workspace_id FROM audit_log LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE audit_log ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'");
+  }
+  db.exec("UPDATE audit_log SET workspace_id = 'default' WHERE workspace_id IS NULL OR workspace_id = ''");
+
+  try {
+    db.prepare('SELECT workspace_id FROM test_runs LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE test_runs ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'");
+  }
+  db.exec("UPDATE test_runs SET workspace_id = 'default' WHERE workspace_id IS NULL OR workspace_id = ''");
+
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_tokens_workspace ON tokens(workspace_id)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_audit_workspace ON audit_log(workspace_id)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_test_runs_workspace ON test_runs(workspace_id)'); } catch {}
 
   try {
     db.prepare('SELECT validation_errors FROM uploaded_workflows LIMIT 1').get();
@@ -57,8 +96,15 @@ export function getDb() {
     db.exec("ALTER TABLE uploaded_workflows ADD COLUMN last_error TEXT DEFAULT ''");
   }
 
+  try {
+    db.prepare('SELECT workspace_id FROM uploaded_workflows LIMIT 1').get();
+  } catch {
+    db.exec("ALTER TABLE uploaded_workflows ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'");
+  }
+
   db.exec("UPDATE uploaded_workflows SET validation_errors = '[]' WHERE validation_errors IS NULL OR validation_errors = ''");
   db.exec("UPDATE uploaded_workflows SET last_error = '' WHERE last_error IS NULL");
+  db.exec("UPDATE uploaded_workflows SET workspace_id = 'default' WHERE workspace_id IS NULL OR workspace_id = ''");
 
   // Add policy_level column to fairness_review_queue if missing (migration for existing DBs)
   try {
@@ -75,6 +121,8 @@ export function getDb() {
     seedVaultCredentials(db);
   }
 
+  ensureVaultCredential(db, ['cred-sendgrid', 'sendgrid-api-key', 'SendGrid API Key', 'token_vault', 'connected']);
+
   console.log('[DB] Database initialized');
   return db;
 }
@@ -90,6 +138,7 @@ function seedVaultCredentials(db) {
     ['cred-gcs', 'gcs-service-account', 'GCS Service Account', 'token_vault', 'connected'],
     ['cred-internal-api', 'internal-api-key', 'Internal API Key', 'token_vault', 'connected'],
     ['cred-source-control', 'source-control-token', 'Source Control Token', 'token_vault', 'restricted'],
+    ['cred-sendgrid', 'sendgrid-api-key', 'SendGrid API Key', 'token_vault', 'connected'],
   ];
 
   const insertMany = db.transaction((creds) => {
@@ -100,6 +149,16 @@ function seedVaultCredentials(db) {
 
   insertMany(credentials);
   console.log('[DB] Seeded vault credentials');
+}
+
+function ensureVaultCredential(db, credential) {
+  const existing = db.prepare('SELECT id FROM vault_credentials WHERE id = ?').get(credential[0]);
+  if (existing) return;
+
+  db.prepare(`
+    INSERT INTO vault_credentials (id, service_name, display_name, connection_type, status)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(...credential);
 }
 
 export function closeDb() {

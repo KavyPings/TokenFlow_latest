@@ -13,6 +13,7 @@ const DEFAULT_STEP_ORDER = [
   'READ_OBJECT',
   'CALL_INTERNAL_API',
   'WRITE_OBJECT',
+  'SEND_EMAIL',
 ];
 
 // Services that are explicitly unauthorized for agents
@@ -22,8 +23,11 @@ const UNAUTHORIZED_SERVICES = ['source-control', 'internal-repo'];
 const STEP_PERMISSIONS = {
   READ_OBJECT: { service: 'gcs', action: 'read', resource: 'bucket/data-input' },
   CALL_INTERNAL_API: { service: 'internal-api', action: 'invoke', resource: 'api/process' },
+  FAIRNESS_CHECK: { service: 'fairness-engine', action: 'evaluate', resource: 'fairness/inline' },
   WRITE_OBJECT: { service: 'gcs', action: 'write', resource: 'bucket/data-output' },
-  // READ_REPO is NOT here — it's unauthorized
+  SEND_EMAIL: { service: 'email', action: 'send', resource: 'sendgrid/mail.send' },
+  WRITE_AUDIT_LOG: { service: 'audit-log', action: 'write', resource: 'audit/workflow' },
+  // READ_REPO is not here - it is unauthorized
 };
 
 // Actions that require step-up authentication (human review)
@@ -302,3 +306,4 @@ class PolicyEngine {
 }
 
 export const policyEngine = new PolicyEngine();
+

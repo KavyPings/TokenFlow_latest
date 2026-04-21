@@ -1,0 +1,23 @@
+{
+  "id": "APP-002",
+  "name": "James Okafor",
+  "age": 28,
+  "email": "james.okafor@example.com",
+  "zip": "60601",
+  "state": "IL",
+  "employment_status": "self_employed",
+  "employer": "Self (Freelance)",
+  "employment_years": 3,
+  "annual_income": 56000,
+  "monthly_income": 4667,
+  "monthly_debt": 890,
+  "loan_amount": 15000,
+  "loan_purpose": "business expansion",
+  "credit_history_years": 4,
+  "protected_attributes": {
+    "gender": "M",
+    "race": "Black",
+    "age_group": "25-34"
+  },
+  "avatar_seed": "James"
+}

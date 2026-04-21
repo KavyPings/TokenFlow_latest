@@ -1,6 +1,8 @@
 import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
@@ -14,13 +16,16 @@ import dashboardRoutes from './routes/dashboardRoutes.js';
 import testbenchRoutes from './routes/testbenchRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import fairnessRoutes from './routes/fairnessRoutes.js';
+import demoRoutes from './routes/demoRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
+import { workspaceMiddleware } from './middleware/workspaceMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const CLIENT_DIST_PATH = resolve(__dirname, '..', '..', 'client', 'dist');
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 8000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const LOCAL_DEV_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
@@ -57,13 +62,25 @@ app.use(cors({
 if (IS_PRODUCTION) {
   app.set('trust proxy', 1);
 }
+
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+app.use(rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 app.use(express.json({ limit: '50mb' }));
+app.use(workspaceMiddleware);
 
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'operational',
     service: 'TokenFlow OS',
-    version: '2.0.0',
+    version: '3.0.0',
     timestamp: new Date().toISOString(),
     auth0: process.env.USE_AUTH0 === 'true' ? 'connected' : 'mock',
   });
@@ -76,6 +93,8 @@ app.use('/api/workflows', workflowRoutes);
 app.use('/api/vault', vaultRoutes);
 app.use('/api/testbench', testbenchRoutes);
 app.use('/api/fairness', fairnessRoutes);
+app.use('/api/demo', demoRoutes);
+app.use('/api/report', reportRoutes);
 
 if (existsSync(CLIENT_DIST_PATH)) {
   app.use(express.static(CLIENT_DIST_PATH));

@@ -1,0 +1,23 @@
+{
+  "id": "APP-001",
+  "name": "Maya Patel",
+  "age": 34,
+  "email": "maya.patel@example.com",
+  "zip": "10001",
+  "state": "NY",
+  "employment_status": "employed",
+  "employer": "Meridian Tech Inc.",
+  "employment_years": 6,
+  "annual_income": 94000,
+  "monthly_income": 7833,
+  "monthly_debt": 1240,
+  "loan_amount": 35000,
+  "loan_purpose": "home improvement",
+  "credit_history_years": 9,
+  "protected_attributes": {
+    "gender": "F",
+    "race": "South Asian",
+    "age_group": "30-39"
+  },
+  "avatar_seed": "Maya"
+}
