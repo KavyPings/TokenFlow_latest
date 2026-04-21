@@ -28,13 +28,13 @@ import { getDefaultThresholds } from '../utils/validation.js';
  * @param {object} [params.metrics=null] - Metrics snapshot at time of action
  * @param {string} [params.actor='system'] - User or system identifier
  */
-export function logAuditEvent(db, { datasetId, action, details = {}, config = null, metrics = null, actor = 'system' }) {
-  const stmt = db.prepare(`
+export async function logAuditEvent(db, { datasetId, action, details = {}, config = null, metrics = null, actor = 'system' }) {
+  const stmt = await db.prepare(`
     INSERT INTO fairness_audit_logs (dataset_id, action, details, config_snapshot, metrics_snapshot, actor)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
 
-  stmt.run(
+  await stmt.run(
     datasetId,
     action,
     JSON.stringify(details),
@@ -51,15 +51,16 @@ export function logAuditEvent(db, { datasetId, action, details = {}, config = nu
  * @param {string} datasetId
  * @returns {object[]}
  */
-export function getAuditTrail(db, datasetId) {
-  const stmt = db.prepare(`
+export async function getAuditTrail(db, datasetId) {
+  const stmt = await db.prepare(`
     SELECT id, dataset_id, action, details, config_snapshot, metrics_snapshot, actor, timestamp
     FROM fairness_audit_logs
     WHERE dataset_id = ?
     ORDER BY timestamp ASC, id ASC
   `);
 
-  return stmt.all(datasetId).map((row) => ({
+  const rows = await stmt.all(datasetId);
+  return rows.map((row) => ({
     ...row,
     details: safeJsonParse(row.details, {}),
     config_snapshot: safeJsonParse(row.config_snapshot, null),
@@ -83,7 +84,7 @@ export function getAuditTrail(db, datasetId) {
  * @param {object} config - User config
  * @returns {object} - The created report
  */
-export function generateReport(db, datasetId, profile, metrics, config) {
+export async function generateReport(db, datasetId, profile, metrics, config) {
   const reportId = uuidv4();
   const thresholds = { ...getDefaultThresholds(), ...(config.thresholds || {}) };
 
@@ -179,15 +180,15 @@ export function generateReport(db, datasetId, profile, metrics, config) {
   };
 
   // Persist report to database
-  const stmt = db.prepare(`
+  const stmt = await db.prepare(`
     INSERT INTO fairness_reports (id, dataset_id, report, risk_level, violation_count)
     VALUES (?, ?, ?, ?, ?)
   `);
-  stmt.run(reportId, datasetId, JSON.stringify(report), riskLevel, allViolations.length);
+  await stmt.run(reportId, datasetId, JSON.stringify(report), riskLevel, allViolations.length);
 
   // Add violations to review queue
   if (allViolations.length > 0) {
-    addToReviewQueue(db, datasetId, reportId, allViolations);
+    await addToReviewQueue(db, datasetId, reportId, allViolations);
   }
 
   return report;
@@ -261,8 +262,8 @@ function detectDisadvantagedGroups(metrics) {
  * @param {string} datasetId
  * @returns {object|null}
  */
-export function getLatestReport(db, datasetId) {
-  const stmt = db.prepare(`
+export async function getLatestReport(db, datasetId) {
+  const stmt = await db.prepare(`
     SELECT id, dataset_id, report, risk_level, violation_count, created_at
     FROM fairness_reports
     WHERE dataset_id = ?
@@ -270,7 +271,7 @@ export function getLatestReport(db, datasetId) {
     LIMIT 1
   `);
 
-  const row = stmt.get(datasetId);
+  const row = await stmt.get(datasetId);
   if (!row) return null;
 
   return {
@@ -291,32 +292,28 @@ export function getLatestReport(db, datasetId) {
  * @param {string} reportId
  * @param {object[]} violations
  */
-export function addToReviewQueue(db, datasetId, reportId, violations) {
-  const stmt = db.prepare(`
+export async function addToReviewQueue(db, datasetId, reportId, violations) {
+  const stmt = await db.prepare(`
     INSERT INTO fairness_review_queue
       (id, dataset_id, report_id, metric_name, group_name, attribute, expected_range, actual_value, severity, policy_level)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  const insertMany = db.transaction((items) => {
-    for (const v of items) {
-      if (v.value === null) continue; // skip null-valued violations
-      stmt.run(
-        uuidv4(),
-        datasetId,
-        reportId,
-        v.metric,
-        v.group,
-        v.attribute,
-        v.threshold_range || `threshold: ${v.threshold}`,
-        v.value,
-        v.severity,
-        v.policy_level || 'warning'
-      );
-    }
-  });
-
-  insertMany(violations);
+  for (const v of violations) {
+    if (v.value === null) continue; // skip null-valued violations
+    await stmt.run(
+      uuidv4(),
+      datasetId,
+      reportId,
+      v.metric,
+      v.group,
+      v.attribute,
+      v.threshold_range || `threshold: ${v.threshold}`,
+      v.value,
+      v.severity,
+      v.policy_level || 'warning'
+    );
+  }
 }
 
 /**
@@ -331,7 +328,7 @@ export function addToReviewQueue(db, datasetId, reportId, violations) {
  * @param {number} [filters.offset=0]
  * @returns {{ items: object[], total: number }}
  */
-export function getReviewQueue(db, filters = {}) {
+export async function getReviewQueue(db, filters = {}) {
   const conditions = [];
   const params = [];
 
@@ -353,11 +350,12 @@ export function getReviewQueue(db, filters = {}) {
   const offset = Math.max(parseInt(filters.offset) || 0, 0);
 
   // Get total count
-  const countStmt = db.prepare(`SELECT COUNT(*) as total FROM fairness_review_queue ${where}`);
-  const { total } = countStmt.get(...params);
+  const countStmt = await db.prepare(`SELECT COUNT(*) as total FROM fairness_review_queue ${where}`);
+  const countRow = await countStmt.get(...params);
+  const total = countRow.total;
 
   // Get paginated items
-  const listStmt = db.prepare(`
+  const listStmt = await db.prepare(`
     SELECT * FROM fairness_review_queue
     ${where}
     ORDER BY
@@ -365,7 +363,7 @@ export function getReviewQueue(db, filters = {}) {
       created_at DESC
     LIMIT ? OFFSET ?
   `);
-  const items = listStmt.all(...params, limit, offset);
+  const items = await listStmt.all(...params, limit, offset);
 
   return { items, total, limit, offset };
 }
@@ -381,19 +379,19 @@ export function getReviewQueue(db, filters = {}) {
  * @param {string} [update.review_notes]
  * @returns {object|null}
  */
-export function updateReviewItem(db, itemId, update) {
+export async function updateReviewItem(db, itemId, update) {
   const validStatuses = ['open', 'acknowledged', 'resolved', 'dismissed'];
   if (!validStatuses.includes(update.status)) {
     throw new Error(`Invalid status "${update.status}". Must be one of: ${validStatuses.join(', ')}`);
   }
 
-  const stmt = db.prepare(`
+  const stmt = await db.prepare(`
     UPDATE fairness_review_queue
     SET status = ?, reviewer = ?, review_notes = ?, updated_at = datetime('now')
     WHERE id = ?
   `);
 
-  const result = stmt.run(
+  const result = await stmt.run(
     update.status,
     update.reviewer || null,
     update.review_notes || null,
@@ -402,7 +400,7 @@ export function updateReviewItem(db, itemId, update) {
 
   if (result.changes === 0) return null;
 
-  return db.prepare('SELECT * FROM fairness_review_queue WHERE id = ?').get(itemId);
+  return (await db.prepare('SELECT * FROM fairness_review_queue WHERE id = ?').get(itemId));
 }
 
 // ───────────────────────────────────────────────────────────

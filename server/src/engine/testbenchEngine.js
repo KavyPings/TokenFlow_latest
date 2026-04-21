@@ -169,14 +169,14 @@ class TestbenchEngine {
     const baseScenarios = ALL_TASKS
       .filter((scenario) => scenario.include_in_testbench !== false)
       .map(t => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      category: t.category,
-      malicious: t.malicious,
-      incident_mapping: t.incident_mapping,
-      steps: t.steps,
-    }));
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        category: t.category,
+        malicious: t.malicious,
+        incident_mapping: t.incident_mapping,
+        steps: t.steps,
+      }));
 
     const uploadedScenarios = this._getUploadedScenarios();
     return [...baseScenarios, ...uploadedScenarios];

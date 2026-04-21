@@ -57,7 +57,7 @@ export default function TestbenchPage() {
 
   useEffect(() => {
     loadScenarios().catch((err) => setError(err.message));
-    loadResults().catch(() => {});
+    loadResults().catch(() => { });
   }, []);
 
   async function runSingle(scenarioId) {

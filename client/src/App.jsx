@@ -10,6 +10,7 @@ import TestbenchPage from './pages/TestbenchPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import IncidentPage from './pages/IncidentPage.jsx';
 import FairnessPage from './pages/FairnessPage.jsx';
+import ScoringPage from './pages/ScoringPage.jsx';
 import OnboardingWizard from './components/OnboardingWizard.jsx';
 
 /* ─── Interactive Particle Canvas ─── */
@@ -401,6 +402,7 @@ export default function App() {
             )}
             {page === 'fairness' && <FairnessPage key="fair" />}
             {page === 'incident' && <IncidentPage key="inc" />}
+            {page === 'scoring' && <ScoringPage key="score" />}
           </motion.div>
         </AnimatePresence>
       </div>

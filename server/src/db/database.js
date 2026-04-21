@@ -80,9 +80,9 @@ export function getDb() {
   }
   db.exec("UPDATE test_runs SET workspace_id = 'default' WHERE workspace_id IS NULL OR workspace_id = ''");
 
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_tokens_workspace ON tokens(workspace_id)'); } catch {}
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_audit_workspace ON audit_log(workspace_id)'); } catch {}
-  try { db.exec('CREATE INDEX IF NOT EXISTS idx_test_runs_workspace ON test_runs(workspace_id)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_tokens_workspace ON tokens(workspace_id)'); } catch { }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_audit_workspace ON audit_log(workspace_id)'); } catch { }
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_test_runs_workspace ON test_runs(workspace_id)'); } catch { }
 
   try {
     db.prepare('SELECT validation_errors FROM uploaded_workflows LIMIT 1').get();
