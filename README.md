@@ -32,7 +32,7 @@ A flaw in Google Cloud's AI system allowed agents to act as "double agents":
 ```
 +────────────────────────────────────────────────────────────────+
 │        Mission Control UI (React + Tailwind)                    │
-│  landing | dashboard | chain | testbench | upload | security    │
+│  landing | dashboard | workflow control | fairness | score      │
 +──────────────────────────┬─────────────────────────────────────+
                            │ REST + WebSocket
                            ▼
@@ -117,20 +117,24 @@ A flaw in Google Cloud's AI system allowed agents to act as "double agents":
 - Path traversal protection
 - Action/verb consistency enforcement
 
+### Fairness Audit & AI Reporting
+- Upload dataset mapping for deterministic fairness metrics (e.g. Disparate Impact, Equal Opportunity)
+- Check violations across protected groups without LLM instability
+- Strict deterministic Execution Gate (allow/shadow/enforce) blocking non-compliant mission execution
+- Auto-generation of executive narratives using Google Gemini Flash (using `GEMINI_API_KEY`)
+- Hard-coded UI deterministic fallbacks if API key is not present
+
 ## Dashboard Pages
 
 | Page | Purpose |
 |---|---|
 | **Home (Landing)** | Explains the incident, how TokenFlow works, product guide |
-| **Dashboard** | Operational overview: workflows, tokens, review queue |
-| **Token Chain** | Live token lifecycle visualization with CLI terminal |
-| **Security** | Human review panel for flagged violations |
-| **Testbench** | Run attack scenarios, verify invariants |
-| **Upload** | Upload custom workflow definitions |
-| **Incident** | Side-by-side architecture comparison |
-| **Launch** | Select and start scenarios |
-| **Audit** | Immutable event timeline |
-| **Vault** | Credential registry (names only, never values) |
+| **Dashboard** | Operational stats hub across workflow control, fairness, and security |
+| **Workflow Control** | Multi-tab runner: Launch scenarios, watch the Token Chain, and run Testbench |
+| **Security** | Human review panel for flagged violations and audit trail |
+| **Fairness** | Audit datasets, mitigate impact, and generate Gemini AI context reports |
+| **Score** | Aggregated compliance scorecard judging system invariants |
+| **Incident (About)** | Side-by-side architecture comparison |
 
 ## Run Locally
 
@@ -278,6 +282,7 @@ Use this if you want Vercel's CDN for the frontend while running the backend on 
 | `VITE_API_BASE_URL` | Vercel | Backend URL (only for split deploy) |
 | `VITE_AUTH0_DOMAIN` | Vercel | Auth0 tenant domain |
 | `VITE_AUTH0_CLIENT_ID` | Vercel | Auth0 app client ID |
+| `GEMINI_API_KEY` | Render | Optional: Google Gemini API key for AI fairness reports |
 
 > **Note on SQLite**: Render's free tier uses ephemeral storage — the database resets on redeploy. For persistent data, upgrade to a paid Render plan with a persistent disk, or migrate to PostgreSQL.
 

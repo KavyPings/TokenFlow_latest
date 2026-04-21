@@ -37,7 +37,7 @@ const HARDCODED_ORIGINS = [
 ];
 const FRONTEND_ORIGINS = [
   ...HARDCODED_ORIGINS,
-  ...(process.env.FRONTEND_ORIGIN)
+  ...(process.env.FRONTEND_ORIGIN || '')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean),

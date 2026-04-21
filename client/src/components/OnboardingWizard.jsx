@@ -131,13 +131,13 @@ export default function OnboardingWizard({ onFinish, onRunAttack }) {
   }
 
   function finish() {
-    localStorage.setItem('tf_onboarded', '1');
+    sessionStorage.setItem('tf_session_toured', '1');
     onFinish?.();
   }
 
   function handleCTA() {
     if (isLast) {
-      localStorage.setItem('tf_onboarded', '1');
+      sessionStorage.setItem('tf_session_toured', '1');
       onRunAttack?.();
     } else {
       next();
@@ -158,8 +158,17 @@ export default function OnboardingWizard({ onFinish, onRunAttack }) {
         <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(circle at 80% 10%, color-mix(in srgb, ${current.color} 8%, transparent), transparent 60%)` }} />
 
         {/* Skip */}
-        <button onClick={finish} className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--outline)' }}>
-          Skip tour
+        <button
+          onClick={finish}
+          className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full"
+          style={{
+            color: 'var(--on-surface-variant)',
+            background: 'rgba(199,196,216,0.12)',
+            border: '1px solid rgba(199,196,216,0.25)',
+            letterSpacing: '0.12em',
+          }}
+        >
+          ✕ Skip tour
         </button>
 
         {/* Step dots */}

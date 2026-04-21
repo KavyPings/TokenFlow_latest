@@ -26,88 +26,42 @@ It helps teams:
 
 ## Main Navigation and What Each Tab Does
 
-### 1) About
-
-Use this tab to understand the problem TokenFlow solves and how the system works at a high level.
+### 1) Home
+A landing page introducing TokenFlow, explaining the Google Vertex "Double Agent" incident it isolates, and providing direct access to the dashboard.
 
 ### 2) Dashboard
+Your high-level Mission Control stats hub. Features include:
+- A bird's-eye view of active workflows, security intercepts, and fairness metrics.
+- A live activity feed showing the most recent system events.
+- A "How to Use TokenFlow" quick-start feature guide to help you navigate operations.
 
-Use this tab as your control center. You can:
-
-- See current workflow health
-- See token activity and security pressure
-- Jump to active chain, security review, or launch
-- Trigger kill switch for current active workflow
-
-### 3) Token Chain
-
-Use this tab to inspect step-by-step execution. You can:
-
-- See token lifecycle (mint -> active -> burned/flagged/revoked)
-- View timeline and event stream
-- Track progress through workflow phases
-- Use kill switch
-- Clear settled workflows from view
+### 3) Workflow Control
+The core execution environment. This tab consolidates multiple views into three sub-tabs:
+- **Launch:** Pick pre-built test scenarios (e.g., normal safe processing, double agent attacks) or select your own uploaded custom workflows to execute. Automatically takes you to the Token Chain once started.
+- **Token Chain:** Visually track step-by-step token execution. Watch capability tokens undergo their "mint -> active -> burned" lifecycle. See detailed event logs and trigger the "Kill Switch" to halt rogue workflows instantly.
+- **Testbench:** Run comprehensive security scenarios, verify 12 strict invariant assertions, and upload your own custom JSON workflow templates for testing.
 
 ### 4) Security
+The human review panel for intercepted (flagged) workflows. You can:
+- Inspect exactly why a workflow was blocked or paused.
+- Review attempted service, resource, and action scope details.
+- Override and resume a paused workflow, or safely discard it by revoking tokens.
+- Review the historically immutable audit trail.
 
-Use this tab for human review of flagged workflows. You can:
+### 5) Fairness
+Audit datasets for structural bias and apply threshold mitigations. You can:
+- Upload CSV or JSON dataset files and configure schema mapping.
+- Analyze rigorous fairness metrics (Disparate Impact, Equal Opportunity, etc.) across protected groups.
+- Generate **Gemini AI-powered Executive Reports** that summarize disparate data points in a plain, human-readable narrative summary (Requires API Key).
+- Run deterministic threshold-based mitigation, tracking exactly which, and how many, cases were impacted.
 
-- Inspect intercepted workflows and violation reasons
-- Review attempted service/resource/action details
-- Override and resume a paused workflow
-- Revoke and abort a risky workflow
-- View historical workflow audit details
-- Clear audit log entries from the UI context
+### 6) Score
+Assess the posture of your workflows and datasets. You can:
+- Check your current system's aggregated Security and Fairness Compliance Score.
+- View a granular checklist detailing passed/failed requirements across configuration, invariants, and audits.
 
-### 5) Testbench
-
-Use this tab to run predefined security scenarios and invariant checks. You can:
-
-- Run one scenario or full suite
-- Test safe, attack, and control scenarios
-- See pass/fail assertions with expected vs actual values
-- Run uploaded workflows through the same test framework
-
-### 6) Upload
-
-Use this tab to upload custom workflow JSON files. You can:
-
-- Start from templates
-- Paste/edit JSON directly
-- Validate before running
-- Keep invalid uploads for debugging
-- Run or delete uploaded workflows
-
-### 7) Fairness
-
-Use this tab to audit datasets for bias and apply mitigation. You can:
-
-- Upload CSV/JSON dataset files
-- Map business columns to fairness fields
-- Analyze fairness metrics by protected groups
-- Review violations and risk level
-- Run threshold-based mitigation
-- Track impacted records and threshold deltas
-- View immutable fairness audit trail
-- Monitor fairness execution gate status
-
-Fairness UI tabs are:
-
-- Upload and Configure
-- Analysis Results
-- Mitigation
-- Review Queue
-- Audit Trail
-
-### 8) Mock Launch
-
-Use this tab to start a mock execution scenario quickly.  
-Scenarios include safe runs, attack attempts, and control behaviors.
-
-### 9) Incident
-
-Use this tab to explain the real-world incident model and compare vulnerable architecture vs TokenFlow controls.
+### 7) About
+Explains the real-world Google Vertex AI incident model and helps you visualize and compare a vulnerable architecture against TokenFlow's exact capabilities.
 
 ## Secondary Pages You Can Reach From Actions
 
@@ -119,6 +73,49 @@ Shows immutable token lifecycle events (mint, activate, burn, flag, revoke) with
 
 Shows credential metadata and status only (never raw secrets).  
 Credentials are accessed through backend vault proxy, not directly by agents.
+
+---
+
+## Custom Workflow Upload Format Requirements
+
+To run a custom workflow, go to **Workflow Control > Testbench > Upload Custom**. TokenFlow accepts `.json` files that follow a strict schema to map exactly to the capability token engine.
+
+### Required JSON Schema
+
+Your uploaded JSON file must strictly match this structure:
+
+```json
+{
+  "name": "Sample Data Pipeline",
+  "description": "Reads raw data, processes it, and writes the output.",
+  "steps": [
+    {
+      "action": "READ_OBJECT",
+      "service": "gcs",
+      "resource": "data/input.json",
+      "actionVerb": "read"
+    },
+    {
+      "action": "CALL_INTERNAL_API",
+      "service": "internal-api",
+      "resource": "api/process",
+      "actionVerb": "invoke"
+    },
+    {
+      "action": "WRITE_OBJECT",
+      "service": "gcs",
+      "resource": "output/result.json",
+      "actionVerb": "write"
+    }
+  ]
+}
+```
+
+### Allowed Values
+
+- **`action`**: Must be one of `READ_OBJECT`, `WRITE_OBJECT`, `CALL_INTERNAL_API`, `ESCALATE_PRIVILEGE`, `MODIFY_PERMISSIONS`.
+- **`service`**: Restricted to allowed services like `gcs`, `internal-api`. Use of prohibited services like `source-control` or `internal-repo` will trigger a security isolation block.
+- **`actionVerb`**: The verb that requests the token capability (e.g., `read`, `write`, `invoke`).
 
 ---
 
@@ -148,41 +145,62 @@ It is deterministic:
 
 ## Dataset Requirements Before Analysis
 
-### Allowed File Types
+### Allowed File Types & Limits
 
-- `.csv`
-- `.json`
+- **Formats:** `.csv` or `.json`
+- **Max file size:** 50 MB
+- **Max rows:** 1,000,000
 
-### File Limits
+### Format Examples
 
-- Max upload size: 50 MB
-- Max row count: 1,000,000
+**1. CSV Profile Example**
+Your CSV must have a header row. Example:
+```csv
+id,gender,age_group,income,actual_label,predicted_label,predicted_score,timestamp,model_version
+1001,Female,20-30,55000,1,1,0.85,2026-04-21T10:00:00Z,v1.2
+1002,Male,30-40,75000,0,1,0.55,2026-04-21T10:05:00Z,v1.2
+1003,Female,30-40,65000,1,0,0.42,2026-04-21T10:10:00Z,v1.2
+```
 
-### JSON Shape Accepted
-
-Your JSON can be:
-
-- A top-level array of row objects
-- Or an object that contains one row array (for example `data`, `rows`, `records`, `items`, or `results`)
+**2. JSON Profile Example**
+Your JSON must be a top-level array of row objects (or an object wrapping an array). Example:
+```json
+[
+  {
+    "id": 1001,
+    "gender": "Female",
+    "actual_label": 1,
+    "predicted_label": 1,
+    "predicted_score": 0.85,
+    "timestamp": "2026-04-21T10:00:00Z"
+  },
+  {
+    "id": 1002,
+    "gender": "Male",
+    "actual_label": 0,
+    "predicted_label": 1,
+    "predicted_score": 0.55,
+    "timestamp": "2026-04-21T10:05:00Z"
+  }
+]
+```
 
 ### Required Mapped Columns
 
-You must map these fields:
+When you upload the file, the UI will ask you to map your columns to the following required fields:
 
-- `record_id`
-- `target_outcome`
-- `predicted_outcome`
+- `record_id` (e.g., 'id')
+- `target_outcome` (e.g., 'actual_label')
+- `predicted_outcome` (e.g., 'predicted_label')
 - `timestamp`
-- `model_version`
+- `model_version` (optional fallback to "v1.0" if missing in the dataset)
 
 ### Required Data Rules
 
-- `target_outcome` and `predicted_outcome` must be binary-like values only:
-  - `0/1`, `true/false`, `yes/no` (case-insensitive)
-- No null/empty values in:
-  - `record_id`, `target_outcome`, `predicted_outcome`
-- Each protected attribute must have at least 2 observed groups
-- You must provide at least 1 protected attribute in config
+- **Binary Labels:** `target_outcome` and `predicted_outcome` must be exactly two possible values indicating success/failure. For example: `0/1`, `true/false`, or `yes/no` (case-insensitive).
+- **No missing values:** Ensure `record_id`, `target_outcome`, and `predicted_outcome` do not contain nulls or empty strings.
+- **Groups:** Each protected attribute you configure must contain at least 2 distinct observed groups (e.g., Male/Female, under30/over30).
+- **Minimum config:** You must provide at least 1 protected attribute before clicking "Run Analysis".
 
 ---
 

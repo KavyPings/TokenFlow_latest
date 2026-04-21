@@ -815,9 +815,95 @@ function ResultsTab({ report, activeDataset }) {
           </div>
         </div>
       )}
+
+      {/* AI Report generation */}
+      <AiReportCard datasetId={activeDataset?.id} />
     </motion.div>
   );
 }
+
+/* ── AI Report Card (inline component for ResultsTab) ── */
+function AiReportCard({ datasetId }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState('');
+
+  async function handleGenerate() {
+    if (!datasetId) return;
+    setLoading(true);
+    setErr('');
+    setResult(null);
+    try {
+      const data = await apiPost(`/api/fairness/datasets/${datasetId}/ai-report`, {});
+      setResult(data);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="card p-5" style={{ borderColor: 'rgba(196,192,255,0.18)', background: 'rgba(196,192,255,0.04)' }}>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <M icon="auto_awesome" style={{ fontSize: 16, color: 'var(--primary)' }} />
+            <h3 className="text-sm font-bold uppercase tracking-[0.1em] font-headline">AI Fairness Report</h3>
+          </div>
+          <p className="text-[11px]" style={{ color: 'var(--on-surface-variant)' }}>
+            Generate a human-readable executive summary of this fairness audit using Gemini Flash.
+            {' '}<span style={{ color: 'var(--outline)' }}>Add GEMINI_API_KEY to .env for AI-powered output.</span>
+          </p>
+        </div>
+        <button
+          onClick={handleGenerate}
+          disabled={loading || !datasetId}
+          className="btn-primary flex-shrink-0"
+          style={{ padding: '0.45rem 1rem', fontSize: '0.7rem' }}
+        >
+          {loading ? (
+            <><span className="inline-block w-3 h-3 rounded-full animate-pulse-subtle mr-1.5" style={{ background: 'rgba(255,255,255,0.5)' }} />Generating…</>
+          ) : (
+            <><M icon="auto_awesome" style={{ fontSize: 14 }} />Generate Report</>
+          )}
+        </button>
+      </div>
+
+      {err && (
+        <div className="p-3 rounded-xl mb-3 text-xs" style={{ background: 'rgba(255,100,100,0.08)', border: '1px solid rgba(255,100,100,0.2)', color: 'var(--error)' }}>
+          <M icon="error" style={{ fontSize: 14, verticalAlign: 'middle', marginRight: 6 }} />{err}
+        </div>
+      )}
+
+      {result && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest" style={{
+              background: result.ai_powered ? 'rgba(196,192,255,0.15)' : 'rgba(70,69,85,0.2)',
+              color: result.ai_powered ? 'var(--primary)' : 'var(--outline)',
+            }}>
+              {result.ai_powered ? `✦ Gemini Flash` : 'Deterministic Template'}
+            </span>
+            <span className="text-[10px] font-mono" style={{ color: 'var(--outline)' }}>
+              {new Date(result.generated_at).toLocaleTimeString()}
+            </span>
+          </div>
+          <div className="p-4 rounded-xl whitespace-pre-wrap text-xs leading-relaxed"
+            style={{ background: 'var(--surface-container-high)', border: '1px solid rgba(70,69,85,0.12)', color: 'var(--on-surface-variant)' }}>
+            {result.narrative}
+          </div>
+          {result.note && (
+            <p className="text-[10px] mt-2 flex items-center gap-1.5" style={{ color: 'var(--outline)' }}>
+              <M icon="info" style={{ fontSize: 13 }} />{result.note}
+            </p>
+          )}
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 
 /* ═══════════════════════════════════════════════════════════
    TAB: Mitigation Results

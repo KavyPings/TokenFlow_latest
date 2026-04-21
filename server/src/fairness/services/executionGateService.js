@@ -25,13 +25,13 @@
  * @param {string} [opts.triggeredBy=null] - What triggered evaluation (e.g. 'analysis', 'workflow_start')
  * @returns {{ allowed: boolean, mode: string, decision: string, message: string, blocking_datasets: object[], blocking_items: object[], evaluated_at: string, evaluation_ms: number }}
  */
-export async function evaluateGate(db, opts = {}) {
+export function evaluateGate(db, opts = {}) {
   const startMs = Date.now();
   const mode = getGateMode();
 
   // ── Check 1: Any latest report with risk_level='high' ──
   // For each analyzed dataset, get only the LATEST report
-  const highRiskDatasets = await db.prepare(`
+  const highRiskDatasets = db.prepare(`
     SELECT fd.id AS dataset_id, fd.name AS dataset_name, fr.risk_level, fr.id AS report_id
     FROM fairness_datasets fd
     INNER JOIN fairness_reports fr ON fr.dataset_id = fd.id
@@ -43,7 +43,7 @@ export async function evaluateGate(db, opts = {}) {
   `).all();
 
   // ── Check 2: Unresolved high-severity review items ──
-  const unresolvedHighItems = await db.prepare(`
+  const unresolvedHighItems = db.prepare(`
     SELECT id, dataset_id, metric_name, group_name, severity, status, attribute
     FROM fairness_review_queue
     WHERE severity = 'high'
@@ -95,12 +95,12 @@ export async function evaluateGate(db, opts = {}) {
 
   // Persist gate decision for operational metrics
   try {
-    const stmt = await db.prepare(`
+    const stmt = db.prepare(`
       INSERT INTO fairness_gate_decisions
         (allowed, mode, decision, message, blocking_datasets, blocking_items, evaluation_ms, triggered_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    await stmt.run(
+    stmt.run(
       decision.allowed ? 1 : 0,
       decision.mode,
       decision.decision,
@@ -134,8 +134,8 @@ export function getGateMode() {
  * @param {number} [limit=20]
  * @returns {{ total_evaluations: number, blocked_count: number, allowed_count: number, recent: object[] }}
  */
-export async function getGateMetrics(db, limit = 20) {
-  const totals = await db.prepare(`
+export function getGateMetrics(db, limit = 20) {
+  const totals = db.prepare(`
     SELECT
       COUNT(*) AS total,
       SUM(CASE WHEN decision = 'BLOCK' THEN 1 ELSE 0 END) AS blocked,
@@ -143,7 +143,7 @@ export async function getGateMetrics(db, limit = 20) {
     FROM fairness_gate_decisions
   `).get();
 
-  const recent = await db.prepare(`
+  const recent = db.prepare(`
     SELECT id, allowed, mode, decision, message, evaluation_ms, triggered_by, created_at
     FROM fairness_gate_decisions
     ORDER BY created_at DESC

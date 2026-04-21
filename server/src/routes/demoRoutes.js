@@ -65,12 +65,14 @@ router.post('/reset', async (req, res) => {
     try { db.prepare('DELETE FROM test_results').run(); } catch { /* table may not exist with that name */ }
     try { db.prepare('DELETE FROM testbench_runs').run(); } catch { }
 
-    // 3. Clear fairness datasets to clean state
-    try {
-      db.prepare('DELETE FROM fairness_reviews').run();
-      db.prepare('DELETE FROM fairness_analyses').run();
-      db.prepare('DELETE FROM fairness_datasets').run();
-    } catch { /* fairness tables optional */ }
+    // 3. Clear ALL fairness tables in dependency order (child → parent)
+    try { db.prepare('DELETE FROM fairness_impacted_cases').run(); } catch { }
+    try { db.prepare('DELETE FROM fairness_mitigation_reports').run(); } catch { }
+    try { db.prepare('DELETE FROM fairness_gate_decisions').run(); } catch { }
+    try { db.prepare('DELETE FROM fairness_review_queue').run(); } catch { }
+    try { db.prepare('DELETE FROM fairness_reports').run(); } catch { }
+    try { db.prepare('DELETE FROM fairness_audit_logs').run(); } catch { }
+    try { db.prepare('DELETE FROM fairness_datasets').run(); } catch { }
 
     // 4. Reset in-memory state in workflowRunner
     workflowRunner.clearWorkflows({ workflowTypes: ['mission', 'testbench', 'upload'], statuses: ['completed', 'aborted', 'running', 'paused'] });

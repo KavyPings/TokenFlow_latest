@@ -71,16 +71,16 @@ export default function LandingPage({ onEnter }) {
               whileTap={{ scale: 0.97 }}
               className="relative overflow-hidden rounded-2xl px-10 py-5 text-base font-bold uppercase tracking-[0.15em] mb-4"
               style={{
-                background: 'linear-gradient(135deg, rgba(147,0,10,0.9) 0%, rgba(196,50,50,0.85) 100%)',
-                border: '1px solid rgba(255,180,171,0.3)',
-                color: 'var(--on-error)',
-                boxShadow: '0 0 60px rgba(255,100,100,0.2), 0 8px 32px rgba(0,0,0,0.4)',
+                background: 'linear-gradient(135deg, rgba(164, 18, 33, 0.96) 0%, rgba(214, 49, 49, 0.92) 100%)',
+                border: '1px solid rgba(255, 213, 213, 0.45)',
+                color: '#fff8f8',
+                boxShadow: '0 0 60px rgba(255,100,100,0.28), 0 8px 32px rgba(0,0,0,0.4)',
               }}
             >
               <span className="relative z-10 flex items-center gap-3 justify-center">
                 <M icon="gpp_bad" style={{ fontSize: 24 }} />
                 Simulate the Double Agent Attack
-                <span className="text-xs font-normal opacity-75 normal-case tracking-normal">— watch it get blocked live</span>
+                <span className="text-xs font-normal opacity-90 normal-case tracking-normal">— watch it get blocked live</span>
               </span>
               <div className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity"
                 style={{ background: 'linear-gradient(135deg, rgba(255,80,80,0.15), transparent)' }} />
@@ -97,7 +97,7 @@ export default function LandingPage({ onEnter }) {
               <M icon="science" style={{ fontSize: 16 }} /> Security Testbench
             </button>
             <button onClick={() => onEnter('incident')} className="btn-ghost text-xs">
-              <M icon="history" style={{ fontSize: 16 }} /> The Incident
+              <M icon="history" style={{ fontSize: 16 }} /> About
             </button>
           </motion.div>
         </div>
@@ -106,7 +106,7 @@ export default function LandingPage({ onEnter }) {
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
           className="mt-12 max-w-3xl mx-auto">
           <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] mb-4" style={{ color: 'var(--outline)' }}>
-            Real applicants in the demo
+            sample scnarios taken
           </p>
           <div className="grid grid-cols-3 gap-3">
             {APPLICANTS.map((app, i) => (

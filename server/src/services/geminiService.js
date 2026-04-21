@@ -271,3 +271,112 @@ export function getGeminiStatus() {
     api_key_configured: !!process.env.GEMINI_API_KEY,
   };
 }
+
+// ─── Fairness Narrative Generator ───────────────────────────────────────────
+
+/**
+ * Generates a human-readable fairness audit narrative.
+ * Uses Gemini Flash when GEMINI_API_KEY is configured.
+ * Falls back to a deterministic template otherwise.
+ *
+ * @param {object} report   - The latest fairness report from auditService
+ * @param {object} metrics  - Raw metrics from computeAllMetrics
+ * @param {object} profile  - Dataset profile from datasetProfiler
+ * @returns {Promise<{ narrative: string, generated_at: string, model: string, ai_powered: boolean }>}
+ */
+export async function generateFairnessNarrative(report, metrics, profile) {
+  const generated_at = new Date().toISOString();
+
+  if (!USE_REAL_GEMINI) {
+    return {
+      narrative: buildDeterministicNarrative(report, metrics, profile),
+      generated_at,
+      model: 'deterministic-template',
+      ai_powered: false,
+      note: 'Set GEMINI_API_KEY in .env to enable AI-powered narrative generation.',
+    };
+  }
+
+  try {
+    await initGemini();
+    if (!model) throw new Error('Gemini model not initialized');
+
+    const prompt = buildFairnessPrompt(report, metrics, profile);
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+
+    return {
+      narrative: text,
+      generated_at,
+      model: 'gemini-1.5-flash',
+      ai_powered: true,
+    };
+  } catch (err) {
+    console.warn('[GEMINI] Fairness narrative generation failed:', err.message);
+    return {
+      narrative: buildDeterministicNarrative(report, metrics, profile),
+      generated_at,
+      model: 'deterministic-template',
+      ai_powered: false,
+      error: err.message,
+    };
+  }
+}
+
+function buildFairnessPrompt(report, metrics, profile) {
+  const violations = report.violations || [];
+  const violationSummary = violations.slice(0, 8).map((v) =>
+    `- ${v.metric} for group "${v.group}": disparity ${((v.value || 0) * 100).toFixed(1)}% (threshold: ${((v.threshold || 0) * 100).toFixed(1)}%) [${v.severity}]`
+  ).join('\n');
+
+  return `You are a senior AI fairness auditor writing a formal executive summary for a fairness audit report.
+
+Dataset: "${profile?.dataset_name || 'Loan Application Dataset'}" — ${profile?.total_rows || 0} records, ${profile?.total_columns || 0} features.
+Risk Level: ${report.risk_level?.toUpperCase() || 'UNKNOWN'}
+Total Violations: ${report.violation_count || 0}
+Analysis Date: ${report.created_at || new Date().toISOString()}
+
+${violations.length > 0 ? `Key Violations Found:\n${violationSummary}` : 'No fairness violations detected above thresholds.'}
+
+Group Distributions:
+${JSON.stringify(profile?.group_distributions || {}, null, 2).slice(0, 600)}
+
+Write a professional, plain-English executive summary (3–4 paragraphs) covering:
+1. Overall fairness posture and risk assessment
+2. The most critical violations and which groups are affected
+3. Root-cause hypothesis based on the data profile
+4. Recommended remediation actions
+
+Be specific, cite the actual metrics, and do not use markdown headers. Write in present tense. Keep it under 450 words.`;
+}
+
+function buildDeterministicNarrative(report, metrics, profile) {
+  const risk = report.risk_level || 'unknown';
+  const count = report.violation_count || 0;
+  const rows = profile?.total_rows || 0;
+  const violations = report.violations || [];
+  const topViolation = violations[0];
+
+  const riskSentence = {
+    low: 'The dataset exhibits low fairness risk. All protected-attribute disparities are within acceptable policy thresholds.',
+    medium: `The dataset presents medium fairness risk with ${count} metric violation${count !== 1 ? 's' : ''} requiring review before production deployment.`,
+    high: `The dataset presents HIGH fairness risk. ${count} metric violation${count !== 1 ? 's' : ''} were detected, several of which exceed critical thresholds and may indicate systemic bias.`,
+    unknown: `Fairness risk assessment is incomplete. ${count} potential violation${count !== 1 ? 's' : ''} were flagged during analysis.`,
+  }[risk] || `${count} violation${count !== 1 ? 's' : ''} detected. Risk level: ${risk}.`;
+
+  const violationDetail = topViolation
+    ? `The most severe violation is ${topViolation.metric} for the "${topViolation.group}" group, with a measured disparity of ${((topViolation.value || 0) * 100).toFixed(1)}% against a policy threshold of ${((topViolation.threshold || 0) * 100).toFixed(1)}%. `
+    : 'No specific group-level violations were identified above the configured thresholds. ';
+
+  const profileDetail = rows > 0
+    ? `Analysis was performed on ${rows.toLocaleString()} records across ${profile?.total_columns || 0} features. `
+    : '';
+
+  const recommendation = count === 0
+    ? 'No remediation is required at this time. Continue monitoring with each new data release.'
+    : risk === 'high'
+      ? 'Immediate remediation is recommended. Consider re-weighting training samples, applying threshold adjustments for affected groups, and conducting a manual case review via the Review Queue before any production deployment.'
+      : 'Moderate remediation is advised. Review flagged violations in the Review Queue and apply targeted threshold adjustments. Re-run analysis after mitigation to confirm improvements.';
+
+  return `${riskSentence}\n\n${profileDetail}${violationDetail}${violations.length > 1 ? `An additional ${violations.length - 1} secondary violation${violations.length > 2 ? 's were' : ' was'} also identified across other protected attributes and metrics. ` : ''}All findings have been logged to the immutable audit trail.\n\n${recommendation}\n\n[This report was generated using the deterministic template engine. Add your GEMINI_API_KEY to .env to generate AI-powered narrative reports with deeper contextual analysis.]`;
+}

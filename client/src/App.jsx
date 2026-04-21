@@ -86,15 +86,15 @@ const STEP_META = {
   READ_REPO: { label: 'Exfiltrate Credentials', msym: 'dangerous', service: 'Source Control', desc: 'BLOCKED — unauthorized access attempt intercepted', phase: 'XX' },
 };
 
-// 7 tabs — added Scoring
+// Nav tabs
 const NAV_ITEMS = [
-  { id: 'home', label: 'Home', msym: 'home' },
-  { id: 'dashboard', label: 'Dashboard', msym: 'space_dashboard' },
-  { id: 'security', label: 'Security', msym: 'shield', badgeKey: 'alerts' },
-  { id: 'testbench', label: 'Testbench', msym: 'science' },
-  { id: 'fairness', label: 'Fairness', msym: 'balance' },
-  { id: 'incident', label: 'Incident', msym: 'gpp_bad' },
-  { id: 'scoring', label: 'Score', msym: 'verified' },
+  { id: 'home', label: 'Home' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'workflow', label: 'Workflow Control', badgeKey: 'running' },
+  { id: 'security', label: 'Security', badgeKey: 'alerts' },
+  { id: 'fairness', label: 'Fairness' },
+  { id: 'scoring', label: 'Score' },
+  { id: 'incident', label: 'About' },
 ];
 
 /* ═══════════════════════════════════════════════════════════
@@ -102,6 +102,8 @@ const NAV_ITEMS = [
    ═══════════════════════════════════════════════════════════ */
 export default function App() {
   const [page, setPage] = useState('home');
+  // workflowSubTab controls which sub-tab is active in the Workflow Control page
+  const [workflowSubTab, setWorkflowSubTab] = useState('launch');
   const [overview, setOverview] = useState(null);
   const [health, setHealth] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -110,13 +112,22 @@ export default function App() {
   const [chain, setChain] = useState([]);
   const [audit, setAudit] = useState([]);
   const [busyAction, setBusyAction] = useState('');
-  const [notice, setNotice] = useState('');
-  const [error, setError] = useState('');
+  // Toast queue: replaces single notice/error strings so toasts never overlap
+  const [toasts, setToasts] = useState([]);
   const [socketState, setSocketState] = useState('connecting');
-  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('tf_onboarded'));
+  // Session-only: show onboarding once per browser session (sessionStorage, not localStorage)
+  const [showOnboarding, setShowOnboarding] = useState(() => !sessionStorage.getItem('tf_session_toured'));
   const [fairnessAlert, setFairnessAlert] = useState(null);
   const refreshTimeoutRef = useRef(null);
+  const isRefreshingRef = useRef(false);
   const selectedWorkflowIdRef = useRef(selectedWorkflowId);
+  const toastIdRef = useRef(0);
+
+  function pushToast(message, type = 'info') {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  }
 
   const workflows = overview?.workflows || [];
   const chainWorkflows = workflows.filter((workflow) => !workflow.hidden_from_chain);
@@ -143,63 +154,113 @@ export default function App() {
     setChain(c.chain || []); setAudit(a.audit_log || []);
   }, []);
 
-  useEffect(() => { loadDashboard().catch((e) => setError(e.message)); }, [loadDashboard]);
-  useEffect(() => { loadChain(selectedWorkflowId).catch((e) => setError(e.message)); }, [selectedWorkflowId, loadChain]);
+  useEffect(() => { loadDashboard().catch((e) => pushToast(e.message, 'error')); }, [loadDashboard]);
+  useEffect(() => { loadChain(selectedWorkflowId).catch((e) => pushToast(e.message, 'error')); }, [selectedWorkflowId, loadChain]);
   useEffect(() => { selectedWorkflowIdRef.current = selectedWorkflowId; }, [selectedWorkflowId]);
+  // Do NOT re-show onboarding on every navigation to home — session flag handled in handleDemoReset
 
   useEffect(() => {
-    const ws = new WebSocket(getWebSocketUrl());
-    ws.addEventListener('open', () => setSocketState('live'));
-    ws.addEventListener('close', () => setSocketState('offline'));
-    ws.addEventListener('error', () => setSocketState('degraded'));
-    ws.addEventListener('message', (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        if (d.type === 'SECURITY_VIOLATION' && d.payload?.workflowType !== 'testbench') {
-          setNotice('Security violation detected — review queue updated.');
-        }
-        if (d.type === 'FAIRNESS_FLAG') {
-          setFairnessAlert(d.payload);
-          setNotice(`Fairness signal detected for ${d.payload?.applicant || 'applicant'} — review recommended.`);
-          setTimeout(() => setFairnessAlert(null), 8000);
-        }
-        if (d.type === 'DECISION_MADE') {
-          setNotice(`Loan decision: ${d.payload?.decision?.toUpperCase() || 'PROCESSED'} for ${d.payload?.applicant || 'applicant'}`);
-        }
-      } catch { }
+    let ws;
+    let reconnectTimeout;
+    let reconnectDelay = 1000;
+    let destroyed = false;
+
+    function connect() {
+      if (destroyed) return;
+      ws = new WebSocket(getWebSocketUrl());
+
+      ws.addEventListener('open', () => {
+        setSocketState('live');
+        reconnectDelay = 1000; // reset backoff on successful connect
+      });
+
+      ws.addEventListener('close', () => {
+        if (destroyed) return;
+        setSocketState('offline');
+        // Reconnect with exponential backoff (max 10s)
+        reconnectTimeout = setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+          connect();
+        }, reconnectDelay);
+      });
+
+      ws.addEventListener('error', () => {
+        setSocketState('degraded');
+        // Let the close event handle reconnect
+      });
+
+      ws.addEventListener('message', (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if (d.type === 'SECURITY_VIOLATION' && d.payload?.workflowType !== 'testbench') {
+            pushToast('Security violation detected — review queue updated.', 'error');
+          }
+          if (d.type === 'FAIRNESS_FLAG') {
+            setFairnessAlert(d.payload);
+            pushToast(`Fairness signal: ${d.payload?.applicant || 'applicant'} — human review recommended.`, 'warning');
+            setTimeout(() => setFairnessAlert(null), 8000);
+          }
+          if (d.type === 'DECISION_MADE') {
+            pushToast(`Loan decision: ${d.payload?.decision?.toUpperCase() || 'PROCESSED'} for ${d.payload?.applicant || 'applicant'}`, 'info');
+          }
+        } catch { }
+
+        // Debounced dashboard refresh — skip if already in-flight
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = setTimeout(() => {
+          if (isRefreshingRef.current) return;
+          isRefreshingRef.current = true;
+          loadDashboard()
+            .then(() => loadChain(selectedWorkflowIdRef.current))
+            .catch((err) => pushToast(err.message, 'error'))
+            .finally(() => { isRefreshingRef.current = false; });
+        }, 800);
+      });
+    }
+
+    connect();
+
+    return () => {
+      destroyed = true;
       clearTimeout(refreshTimeoutRef.current);
-      refreshTimeoutRef.current = setTimeout(() => {
-        loadDashboard().then(() => loadChain(selectedWorkflowIdRef.current)).catch((err) => setError(err.message));
-      }, 300);
-    });
-    return () => { clearTimeout(refreshTimeoutRef.current); ws.close(); };
+      clearTimeout(reconnectTimeout);
+      if (ws) ws.close();
+    };
   }, [loadDashboard, loadChain]);
 
-  useEffect(() => { if (!notice && !error) return; const t = setTimeout(() => { setNotice(''); setError(''); }, 5000); return () => clearTimeout(t); }, [notice, error]);
-
-  async function withBusy(name, fn) { setBusyAction(name); setError(''); try { await fn(); } catch (e) { setError(e.message); } finally { setBusyAction(''); } }
+  async function withBusy(name, fn) {
+    setBusyAction(name);
+    try { await fn(); }
+    catch (e) { pushToast(e.message, 'error'); }
+    finally { setBusyAction(''); }
+  }
 
   function handleStart() {
     withBusy('start', async () => {
       const r = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify({ taskId: selectedTask }) });
-      setNotice(`Workflow ${r.workflowId} started.`);
+      pushToast(`Workflow started — watching token chain.`, 'info');
       setSelectedWorkflowId(r.workflowId);
       await loadDashboard(r.workflowId);
       await loadChain(r.workflowId);
+      // Auto-navigate to Token Chain tab
+      setPage('workflow');
+      setWorkflowSubTab('chain');
     });
   }
 
-  function handleResume(id) { withBusy('resume', async () => { await api(`/api/workflows/${id}/resume`, { method: 'POST' }); setNotice('Workflow resumed.'); await loadDashboard(id); await loadChain(id); }); }
-  function handleRevoke(id) { withBusy('revoke', async () => { await api(`/api/workflows/${id}/revoke`, { method: 'POST' }); setNotice('Workflow aborted.'); await loadDashboard(id); await loadChain(id); }); }
-  function handleKill(id) { if (!id) return; withBusy('kill', async () => { await api(`/api/workflows/${id}/kill`, { method: 'POST' }); setNotice('Kill switch engaged.'); await loadDashboard(id); await loadChain(id); }); }
+  function handleResume(id) { withBusy('resume', async () => { await api(`/api/workflows/${id}/resume`, { method: 'POST' }); pushToast('Workflow resumed.', 'info'); await loadDashboard(id); await loadChain(id); }); }
+  function handleRevoke(id) { withBusy('revoke', async () => { await api(`/api/workflows/${id}/revoke`, { method: 'POST' }); pushToast('Workflow aborted.', 'info'); await loadDashboard(id); await loadChain(id); }); }
+  function handleKill(id) { if (!id) return; withBusy('kill', async () => { await api(`/api/workflows/${id}/kill`, { method: 'POST' }); pushToast('Kill switch engaged.', 'error'); await loadDashboard(id); await loadChain(id); }); }
 
   async function handleUploadedWorkflowRun(uploadedWorkflowId) {
     const result = await api(`/api/workflows/upload/${uploadedWorkflowId}/run`, { method: 'POST' });
     setSelectedWorkflowId(result.workflowId);
     await loadDashboard(result.workflowId);
     await loadChain(result.workflowId);
-    setNotice(`Uploaded workflow ${result.taskData?.name || uploadedWorkflowId} started.`);
-    setPage('dashboard');
+    pushToast(`Uploaded workflow started — watching token chain.`, 'info');
+    // Auto-navigate to Token Chain
+    setPage('workflow');
+    setWorkflowSubTab('chain');
     return result;
   }
 
@@ -211,7 +272,7 @@ export default function App() {
       const nextId = selectedWorkflowIdRef.current && visibleWorkflows.some((w) => w.id === selectedWorkflowIdRef.current)
         ? selectedWorkflowIdRef.current
         : (visibleWorkflows.find((w) => w.status === 'running' || w.status === 'paused')?.id || visibleWorkflows[0]?.id || null);
-      setNotice(result.count ? `Cleared ${result.count} settled workflow${result.count === 1 ? '' : 's'}.` : 'No settled workflows to clear.');
+      pushToast(result.count ? `Cleared ${result.count} settled workflow${result.count === 1 ? '' : 's'}.` : 'No settled workflows to clear.', 'info');
       setSelectedWorkflowId(nextId);
       await loadChain(nextId);
     });
@@ -222,39 +283,47 @@ export default function App() {
       const result = await api('/api/tokens/audit/clear', { method: 'POST' });
       await loadDashboard(selectedWorkflowIdRef.current);
       await loadChain(selectedWorkflowIdRef.current);
-      setNotice(result.count ? `Cleared ${result.count} audit event${result.count === 1 ? '' : 's'}.` : 'Audit log already empty.');
+      pushToast(result.count ? `Cleared ${result.count} audit event${result.count === 1 ? '' : 's'}.` : 'Audit log already empty.', 'info');
     });
   }
 
-  function handleRefresh() { withBusy('refresh', async () => { await loadDashboard(); await loadChain(selectedWorkflowId); setNotice('Refreshed.'); }); }
+  function handleRefresh() { withBusy('refresh', async () => { await loadDashboard(); await loadChain(selectedWorkflowId); pushToast('Refreshed.', 'info'); }); }
 
   function handleDemoReset() {
     withBusy('demo-reset', async () => {
       await api('/api/demo/reset', { method: 'POST' });
       await loadDashboard();
+      // Clear BOTH storages so onboarding shows again after demo reset
+      localStorage.removeItem('tf_onboarded');
+      sessionStorage.removeItem('tf_session_toured');
+      setShowOnboarding(true);
+      setPage('home');
+      setWorkflowSubTab('launch');
       setSelectedWorkflowId(null);
       setChain([]);
       setAudit([]);
-      setNotice('Demo reset — all state cleared. Ready for a fresh run.');
+      pushToast('Demo reset — all state cleared. Ready for a fresh run.', 'info');
     });
   }
 
   function handleRunAttack() {
     setSelectedTask('SCENARIO-002');
-    setPage('dashboard');
-    // Auto-start after a brief nav delay
+    // Auto-start after a brief nav delay, navigate straight to token chain
     setTimeout(() => {
       withBusy('start', async () => {
         const r = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify({ taskId: 'SCENARIO-002' }) });
-        setNotice('Double Agent attack scenario started — watch the chain.');
+        pushToast('Double Agent attack scenario started — watch the chain.', 'error');
         setSelectedWorkflowId(r.workflowId);
         await loadDashboard(r.workflowId);
         await loadChain(r.workflowId);
+        setPage('workflow');
+        setWorkflowSubTab('chain');
       });
     }, 400);
   }
 
   const alertCount = reviewQueue.length;
+  const runningCount = workflows.filter((w) => w.status === 'running' || w.status === 'paused').length;
   const showRefreshButton = socketState === 'offline' || socketState === 'degraded';
 
   return (
@@ -282,14 +351,42 @@ export default function App() {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold" style={{ color: 'var(--warning)' }}>Fairness Signal Detected</p>
                 <p className="text-[10px]" style={{ color: 'var(--on-surface-variant)' }}>
-                  {fairnessAlert.applicant} — score {fairnessAlert.score} — {fairnessAlert.recommendation} — Human review recommended
+                  {fairnessAlert.applicant} — score {fairnessAlert.score} — {fairnessAlert.recommendation}
                 </p>
               </div>
-              <button onClick={() => setFairnessAlert(null)} className="text-[10px]" style={{ color: 'var(--outline)' }}>✕</button>
+              <button onClick={() => setFairnessAlert(null)} style={{ color: 'var(--outline)', fontSize: 12 }}>✕</button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ─── Toast Stack (bottom-right, non-overlapping) ─── */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2" style={{ maxWidth: 'min(400px, calc(100vw - 3rem))' }}>
+        <AnimatePresence initial={false}>
+          {toasts.map((t) => (
+            <motion.div
+              key={t.id}
+              layout
+              initial={{ opacity: 0, x: 40, scale: 0.94 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 40, scale: 0.9 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="flex items-start gap-2.5 px-4 py-3 rounded-2xl shadow-xl"
+              style={{
+                background: t.type === 'error' ? 'rgba(55,15,15,0.97)' : t.type === 'warning' ? 'rgba(45,35,0,0.97)' : 'rgba(18,18,32,0.97)',
+                border: t.type === 'error' ? '1px solid rgba(255,100,100,0.35)' : t.type === 'warning' ? '1px solid rgba(251,191,36,0.35)' : '1px solid rgba(196,192,255,0.2)',
+                backdropFilter: 'blur(20px)',
+              }}
+            >
+              <M icon={t.type === 'error' ? 'error' : t.type === 'warning' ? 'warning' : 'check_circle'}
+                style={{ fontSize: 16, flexShrink: 0, marginTop: 1, color: t.type === 'error' ? 'var(--error)' : t.type === 'warning' ? 'var(--warning)' : 'var(--success)' }} />
+              <span className="text-xs leading-relaxed flex-1" style={{ color: 'var(--on-surface)' }}>{t.message}</span>
+              <button onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))} style={{ color: 'var(--outline)', fontSize: 11, flexShrink: 0, marginTop: 1 }}>✕</button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {/* ─── Floating Top Navbar ─── */}
       <nav className="top-navbar">
         <div className="flex items-center gap-3">
@@ -301,6 +398,7 @@ export default function App() {
             <button key={item.id} onClick={() => setPage(item.id)} className={`nav-pill ${page === item.id ? 'active' : ''}`}>
               {item.label}
               {item.badgeKey === 'alerts' && alertCount > 0 && <span className="badge-dot" />}
+              {item.badgeKey === 'running' && runningCount > 0 && <span className="badge-dot" style={{ background: 'var(--success)' }} />}
             </button>
           ))}
         </div>
@@ -310,13 +408,8 @@ export default function App() {
               <RefreshCcw className="h-3 w-3" /> Refresh
             </button>
           )}
-          <button
-            onClick={handleDemoReset}
-            disabled={!!busyAction}
-            className="btn-ghost"
-            title="Reset all demo state"
-            style={{ padding: '0.4rem 0.8rem', fontSize: '0.65rem', color: 'var(--warning)', borderColor: 'rgba(251,191,36,0.2)', background: 'rgba(251,191,36,0.04)' }}
-          >
+          <button onClick={handleDemoReset} disabled={!!busyAction} className="btn-ghost" title="Reset all demo state"
+            style={{ padding: '0.4rem 0.8rem', fontSize: '0.65rem', color: 'var(--warning)', borderColor: 'rgba(251,191,36,0.2)', background: 'rgba(251,191,36,0.04)' }}>
             <M icon="restart_alt" style={{ fontSize: 14 }} /> Reset Demo
           </button>
           <div className="flex items-center gap-1.5">
@@ -330,23 +423,9 @@ export default function App() {
         </div>
       </nav>
 
-      <AnimatePresence>
-        {(notice || error) && (
-          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-            className={`toast ${error ? 'toast-error' : 'toast-info'}`}>
-            <div className="flex items-center gap-2">
-              <M icon={error ? 'error' : 'check_circle'} style={{ fontSize: 16 }} />
-              {error || notice}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="main-wrap">
         <AnimatePresence mode="wait">
-          <motion.div
-            key={page}
-            className="page-stage"
+          <motion.div key={page} className="page-stage"
             initial={{ opacity: 0, y: 16, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -12, scale: 0.99 }}
@@ -357,25 +436,43 @@ export default function App() {
               <DashboardPage
                 key="d"
                 workflows={workflows}
-                chainWorkflows={chainWorkflows}
                 reviewQueue={reviewQueue}
                 credentials={credentials}
                 health={health}
                 currentWorkflow={currentWorkflow}
-                currentChainWorkflow={currentChainWorkflow}
                 chainNodes={chainNodes}
                 audit={audit}
                 socketState={socketState}
+                totalTokens={workflows.reduce((s, w) => s + Object.values(w.token_summary || {}).reduce((a, b) => a + b, 0), 0)}
+                burnedTokens={workflows.reduce((s, w) => s + (w.token_summary?.burned || 0), 0)}
+                busyAction={busyAction}
+                setPage={setPage}
+                setWorkflowSubTab={setWorkflowSubTab}
+                onKill={() => handleKill(currentWorkflow?.id)}
+              />
+            )}
+            {page === 'workflow' && (
+              <WorkflowControlPage
+                key="wf"
+                workflows={workflows}
+                chainWorkflows={chainWorkflows}
+                chainNodes={chainNodes}
+                audit={audit}
+                currentWorkflow={currentWorkflow}
+                currentChainWorkflow={currentChainWorkflow}
+                selectedWorkflowId={selectedWorkflowId}
+                setSelectedWorkflowId={setSelectedWorkflowId}
                 tasks={tasks}
                 selectedTask={selectedTask}
                 setSelectedTask={setSelectedTask}
-                selectedWorkflowId={selectedWorkflowId}
-                setSelectedWorkflowId={setSelectedWorkflowId}
                 onStart={handleStart}
                 onKill={() => handleKill(currentWorkflow?.id)}
                 onClearWorkflows={handleClearWorkflows}
                 busyAction={busyAction}
                 setPage={setPage}
+                onRunUploadedWorkflow={handleUploadedWorkflowRun}
+                activeTab={workflowSubTab}
+                setActiveTab={setWorkflowSubTab}
               />
             )}
             {page === 'security' && (
@@ -393,13 +490,6 @@ export default function App() {
                 busyAction={busyAction}
               />
             )}
-            {page === 'testbench' && (
-              <TestbenchWithUpload
-                key="tb"
-                setPage={setPage}
-                onRunUploadedWorkflow={handleUploadedWorkflowRun}
-              />
-            )}
             {page === 'fairness' && <FairnessPage key="fair" />}
             {page === 'incident' && <IncidentPage key="inc" />}
             {page === 'scoring' && <ScoringPage key="score" />}
@@ -411,38 +501,51 @@ export default function App() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Testbench + Upload (tabbed wrapper)
+   PAGE: Workflow Control (Launch | Token Chain | Testbench)
    ═══════════════════════════════════════════════════════════ */
-function TestbenchWithUpload({ setPage, onRunUploadedWorkflow }) {
-  const [tab, setTab] = useState('scenarios');
+function WorkflowControlPage({
+  workflows, chainWorkflows, chainNodes, audit,
+  currentWorkflow, currentChainWorkflow,
+  selectedWorkflowId, setSelectedWorkflowId,
+  tasks, selectedTask, setSelectedTask,
+  onStart, onKill, onClearWorkflows, busyAction, setPage, onRunUploadedWorkflow,
+  activeTab, setActiveTab,
+}) {
+  const tabs = [
+    { id: 'launch', label: 'Launch', msym: 'play_arrow' },
+    { id: 'chain', label: 'Token Chain', msym: 'token' },
+    { id: 'testbench', label: 'Testbench', msym: 'science' },
+  ];
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      {/* Tab switcher */}
       <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setTab('scenarios')}
-          className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-[0.1em] transition-all ${tab === 'scenarios' ? 'btn-primary' : 'btn-ghost'}`}
-          style={tab !== 'scenarios' ? { padding: '0.5rem 1.25rem' } : {}}
-        >
-          <M icon="science" style={{ fontSize: 14 }} /> Scenarios
-        </button>
-        <button
-          onClick={() => setTab('upload')}
-          className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-[0.1em] transition-all ${tab === 'upload' ? 'btn-primary' : 'btn-ghost'}`}
-          style={tab !== 'upload' ? { padding: '0.5rem 1.25rem' } : {}}
-        >
-          <M icon="upload_file" style={{ fontSize: 14 }} /> Upload Custom
-        </button>
+        {tabs.map((t) => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-[0.1em] transition-all flex items-center gap-1.5 ${activeTab === t.id ? 'btn-primary' : 'btn-ghost'}`}
+            style={activeTab !== t.id ? { padding: '0.5rem 1.25rem' } : {}}>
+            <M icon={t.msym} style={{ fontSize: 14 }} />{t.label}
+          </button>
+        ))}
       </div>
       <AnimatePresence mode="wait">
-        {tab === 'scenarios' && (
-          <motion.div key="scenarios" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <TestbenchPage />
+        {activeTab === 'launch' && (
+          <motion.div key="launch" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <LaunchTab tasks={tasks} selectedTask={selectedTask} setSelectedTask={setSelectedTask}
+              onStart={onStart} busyAction={busyAction}
+              onRunUploadedWorkflow={onRunUploadedWorkflow} setPage={setPage} />
           </motion.div>
         )}
-        {tab === 'upload' && (
-          <motion.div key="upload" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <UploadPage setPage={setPage} onRunUploadedWorkflow={onRunUploadedWorkflow} />
+        {activeTab === 'chain' && (
+          <motion.div key="chain" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <ChainTab workflows={chainWorkflows} chainNodes={chainNodes}
+              currentWorkflow={currentChainWorkflow}
+              selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId}
+              audit={audit} onKill={onKill} onClearWorkflows={onClearWorkflows} busyAction={busyAction} />
+          </motion.div>
+        )}
+        {activeTab === 'testbench' && (
+          <motion.div key="testbench" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <TestbenchPage />
           </motion.div>
         )}
       </AnimatePresence>
@@ -451,88 +554,174 @@ function TestbenchWithUpload({ setPage, onRunUploadedWorkflow }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   PAGE: Dashboard (with internal tabs: Overview | Chain | Launch)
+   PAGE: Dashboard — Clean stats hub (no sub-tabs)
    ═══════════════════════════════════════════════════════════ */
 function DashboardPage({
-  workflows, chainWorkflows, reviewQueue, credentials, health,
-  currentWorkflow, currentChainWorkflow, chainNodes, audit, socketState,
-  tasks, selectedTask, setSelectedTask, selectedWorkflowId, setSelectedWorkflowId,
-  onStart, onKill, onClearWorkflows, busyAction, setPage,
+  workflows, reviewQueue, credentials,
+  currentWorkflow, chainNodes, audit, socketState,
+  totalTokens, burnedTokens, busyAction,
+  setPage, setWorkflowSubTab, onKill,
 }) {
-  const [tab, setTab] = useState('overview');
-
-  const totalTokens = workflows.reduce((s, w) => s + Object.values(w.token_summary || {}).reduce((a, b) => a + b, 0), 0);
-  const burnedTokens = workflows.reduce((s, w) => s + (w.token_summary?.burned || 0), 0);
+  const runningWf = workflows.filter((w) => w.status === 'running' || w.status === 'paused');
+  const completedWf = workflows.filter((w) => w.status === 'completed');
+  const progress = chainNodes.length
+    ? Math.round((chainNodes.filter((n) => n.status === 'burned').length / chainNodes.length) * 100) : 0;
+  const recentAudit = audit.slice(-5).reverse();
+  const interceptCount = reviewQueue.length;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      {/* Internal tab bar */}
-      <div className="flex gap-2 mb-6">
-        {[
-          { id: 'overview', label: 'Overview', msym: 'space_dashboard' },
-          { id: 'chain', label: 'Token Chain', msym: 'token' },
-          { id: 'launch', label: 'Launch', msym: 'play_arrow' },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-[0.1em] transition-all flex items-center gap-1.5 ${tab === t.id ? 'btn-primary' : 'btn-ghost'}`}
-            style={tab !== t.id ? { padding: '0.5rem 1.25rem' } : {}}
-          >
-            <M icon={t.msym} style={{ fontSize: 14 }} />{t.label}
-          </button>
-        ))}
+      <div className="mb-8">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4" style={{ background: 'rgba(196,192,255,0.08)', border: '1px solid rgba(196,192,255,0.2)' }}>
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse-subtle" style={{ background: 'var(--primary)' }} />
+          <span className="text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: 'var(--primary)' }}>Mission Control</span>
+        </div>
+        <h1 className="font-headline text-3xl font-bold tracking-tight mb-2" style={{ color: 'var(--on-surface)' }}>System Overview</h1>
+        <p className="text-sm" style={{ color: 'var(--on-surface-variant)' }}>Live status across Workflow Control, Fairness Auditing, and Security monitoring.</p>
       </div>
 
-      <AnimatePresence mode="wait">
-        {tab === 'overview' && (
-          <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <OverviewTab
-              workflows={workflows}
-              reviewQueue={reviewQueue}
-              credentials={credentials}
-              health={health}
-              currentWorkflow={currentWorkflow}
-              chainNodes={chainNodes}
-              audit={audit}
-              socketState={socketState}
-              totalTokens={totalTokens}
-              burnedTokens={burnedTokens}
-              onKill={onKill}
-              busyAction={busyAction}
-              setTab={setTab}
-              setPage={setPage}
-              setSelectedWorkflowId={setSelectedWorkflowId}
-            />
-          </motion.div>
-        )}
-        {tab === 'chain' && (
-          <motion.div key="chain" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <ChainTab
-              workflows={chainWorkflows}
-              chainNodes={chainNodes}
-              currentWorkflow={currentChainWorkflow}
-              selectedWorkflowId={selectedWorkflowId}
-              setSelectedWorkflowId={setSelectedWorkflowId}
-              audit={audit}
-              onKill={onKill}
-              onClearWorkflows={onClearWorkflows}
-              busyAction={busyAction}
-            />
-          </motion.div>
-        )}
-        {tab === 'launch' && (
-          <motion.div key="launch" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <LaunchTab
-              tasks={tasks}
-              selectedTask={selectedTask}
-              setSelectedTask={setSelectedTask}
-              onStart={onStart}
-              busyAction={busyAction}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <MetricCard label="Workflows" value={workflows.length} msym="hub" color="primary" sub={`${runningWf.length} active`} delay={0} />
+        <MetricCard label="Intercepts" value={interceptCount} msym="shield" color="error" sub="Flagged for review" delay={1} />
+        <MetricCard label="Tokens" value={totalTokens} msym="key_visualizer" color="secondary" sub={`${burnedTokens} burned`} delay={2} />
+        <MetricCard label="Credentials" value={credentials.length} msym="lock" color="success" sub="Vault isolated" delay={3} />
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-4 mb-6">
+        {/* Workflow Control panel */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg" style={{ background: 'rgba(196,192,255,0.12)' }}><M icon="hub" style={{ fontSize: 16, color: 'var(--primary)' }} /></div>
+              <p className="text-xs font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--primary)' }}>Workflow Control</p>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: runningWf.length ? 'rgba(52,211,153,0.12)' : 'rgba(70,69,85,0.15)', color: runningWf.length ? 'var(--success)' : 'var(--outline)' }}>
+              {runningWf.length ? `${runningWf.length} active` : 'idle'}
+            </span>
+          </div>
+          <div className="space-y-2.5 mb-4">
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Chain progress</span><span className="font-bold font-mono" style={{ color: 'var(--on-surface)' }}>{progress}%</span></div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(70,69,85,0.2)' }}>
+              <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: progress === 100 ? 'var(--success)' : 'var(--primary)' }} />
+            </div>
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Completed</span><span className="font-bold font-mono" style={{ color: 'var(--on-surface)' }}>{completedWf.length}</span></div>
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Current task</span><span className="font-bold truncate" style={{ color: currentWorkflow ? 'var(--secondary)' : 'var(--outline)', maxWidth: 100 }}>{currentWorkflow?.name?.slice(0, 20) || '—'}</span></div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { setPage('workflow'); setWorkflowSubTab('launch'); }} className="btn-primary flex-1 py-2 text-xs"><M icon="play_arrow" style={{ fontSize: 14 }} />Launch</button>
+            <button onClick={() => { setPage('workflow'); setWorkflowSubTab('chain'); }} className="btn-ghost flex-1 py-2 text-xs"><M icon="token" style={{ fontSize: 14 }} />Chain</button>
+          </div>
+        </div>
+
+        {/* Fairness panel */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg" style={{ background: 'rgba(20,209,255,0.12)' }}><M icon="balance" style={{ fontSize: 16, color: 'var(--secondary)' }} /></div>
+              <p className="text-xs font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--secondary)' }}>Fairness Audit</p>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: interceptCount ? 'rgba(255,180,171,0.12)' : 'rgba(52,211,153,0.1)', color: interceptCount ? 'var(--error)' : 'var(--success)' }}>
+              {interceptCount ? `${interceptCount} flagged` : 'clear'}
+            </span>
+          </div>
+          <div className="space-y-2.5 mb-4">
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Review queue</span><span className="font-bold font-mono" style={{ color: interceptCount ? 'var(--error)' : 'var(--on-surface)' }}>{interceptCount} items</span></div>
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Gate mode</span><span className="font-bold" style={{ color: 'var(--on-surface)' }}>shadow</span></div>
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>AI reports</span><span className="font-bold" style={{ color: 'var(--outline)' }}>ready</span></div>
+          </div>
+          <button onClick={() => setPage('fairness')} className="btn-primary w-full py-2 text-xs"><M icon="balance" style={{ fontSize: 14 }} />Open Fairness</button>
+        </div>
+
+        {/* Security panel */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg" style={{ background: 'rgba(255,180,171,0.12)' }}><M icon="shield" style={{ fontSize: 16, color: 'var(--error)' }} /></div>
+              <p className="text-xs font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--error)' }}>Security</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: socketState === 'live' ? 'var(--success)' : 'var(--error)' }} />
+              <span className="text-[10px] font-bold uppercase tracking-widest font-mono" style={{ color: 'var(--on-surface-variant)' }}>{socketState}</span>
+            </div>
+          </div>
+          <div className="space-y-2.5 mb-4">
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Vault</span><span className="font-bold" style={{ color: 'var(--success)' }}>ONLINE</span></div>
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Events logged</span><span className="font-bold font-mono" style={{ color: 'var(--on-surface)' }}>{audit.length}</span></div>
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Credentials</span><span className="font-bold" style={{ color: 'var(--on-surface)' }}>{credentials.length} isolated</span></div>
+          </div>
+          <button onClick={() => setPage('security')} className="btn-ghost w-full py-2 text-xs"><M icon="policy" style={{ fontSize: 14 }} />Security Log</button>
+        </div>
+      </div>
+
+      {/* Live activity + active workflows */}
+      <div className="grid md:grid-cols-2 gap-4 mb-6">
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold uppercase tracking-[0.12em]">Recent Activity</h3>
+            <span className="text-[10px] font-mono" style={{ color: 'var(--outline)' }}>{recentAudit.length} events</span>
+          </div>
+          {recentAudit.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--on-surface-variant)' }}>No activity yet. Launch a workflow to begin.</p>
+          ) : (
+            <div className="space-y-2">{recentAudit.map((e) => <StreamRow key={`${e.id}-${e.timestamp}`} entry={e} />)}</div>
+          )}
+        </div>
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold uppercase tracking-[0.12em]">Active Workflows</h3>
+            <button onClick={() => { setPage('workflow'); setWorkflowSubTab('chain'); }}
+              className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1" style={{ color: 'var(--primary)' }}>
+              View chain <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+          {runningWf.length === 0 ? (
+            <EmptyState msym="hub" text="No active workflows." action="Launch one" onAction={() => { setPage('workflow'); setWorkflowSubTab('launch'); }} />
+          ) : (
+            <div className="space-y-2">
+              {runningWf.slice(0, 4).map((w) => (
+                <motion.div key={w.id} whileHover={{ x: 4 }}
+                  className="flex items-center gap-3 p-2.5 rounded-xl"
+                  style={{ background: 'var(--surface-container-high)', border: '1px solid rgba(70,69,85,0.12)', cursor: 'pointer' }}
+                  onClick={() => { setPage('workflow'); setWorkflowSubTab('chain'); }}>
+                  <M icon="hub" style={{ color: 'var(--primary)', fontSize: 14 }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold truncate">{w.name}</p>
+                    <p className="text-[10px] font-mono" style={{ color: 'var(--on-surface-variant)' }}>{w.id.slice(0, 14)}</p>
+                  </div>
+                  <StatusPill status={w.status} />
+                </motion.div>
+              ))}
+            </div>
+          )}
+          {currentWorkflow && (
+            <button onClick={onKill} disabled={busyAction === 'kill'} className="btn-danger w-full py-2 text-xs mt-3">
+              <M icon="local_fire_department" style={{ fontSize: 14 }} />{busyAction === 'kill' ? 'Halting…' : 'Kill Switch'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Feature guide */}
+      <div className="card p-6">
+        <div className="flex items-center gap-2 mb-5"><M icon="menu_book" style={{ color: 'var(--primary)', fontSize: 18 }} /><h3 className="text-sm font-bold uppercase tracking-[0.15em]">How to Use TokenFlow</h3></div>
+        <div className="grid md:grid-cols-2 gap-4">
+          {[
+            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(196,192,255,0.08)', title: 'Workflow Control', steps: ['Open Workflow Control in the top nav', 'Select a scenario in the Launch tab', 'Click Start Secure Execution', 'You\'ll be taken to Token Chain automatically', 'Use Testbench tab for stress-testing'] },
+            { icon: 'balance', color: 'var(--secondary)', bg: 'rgba(20,209,255,0.08)', title: 'Fairness Audit', steps: ['Open the Fairness tab', 'Upload a CSV dataset', 'Click Run Analysis to compute bias metrics', 'Review violations in the Report section', 'Click Generate AI Report (needs GEMINI_API_KEY in .env)'] },
+            { icon: 'shield', color: 'var(--error)', bg: 'rgba(255,180,171,0.08)', title: 'Security Monitoring', steps: ['Check the Security tab for flagged intercepts', 'Resume or Revoke paused workflows from the review queue', 'The Vault isolates credentials — agents never hold secrets', 'Use Reset Demo (top bar) to clear all state'] },
+            { icon: 'verified', color: 'var(--success)', bg: 'rgba(52,211,153,0.08)', title: 'Compliance Score', steps: ['Run a workflow first', 'Open the Score tab in the top nav', 'View the compliance scorecard and arc gauge', 'Check the policy checklist for specific items'] },
+          ].map((item) => (
+            <div key={item.title} className="rounded-2xl p-4" style={{ background: item.bg, border: `1px solid ${item.color}25` }}>
+              <div className="flex items-center gap-2 mb-3"><M icon={item.icon} style={{ fontSize: 15, color: item.color }} /><h4 className="text-xs font-bold uppercase tracking-[0.12em]" style={{ color: item.color }}>{item.title}</h4></div>
+              <ol className="space-y-1">{item.steps.map((step, i) => (
+                <li key={i} className="text-[11px] flex gap-2 leading-relaxed" style={{ color: 'var(--on-surface-variant)' }}>
+                  <span className="flex-shrink-0 font-bold font-mono" style={{ color: item.color }}>{i + 1}.</span>{step}
+                </li>
+              ))}</ol>
+            </div>
+          ))}
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -542,6 +731,8 @@ function OverviewTab({ workflows, reviewQueue, credentials, health, currentWorkf
   const liveNodes = chainNodes.length ? chainNodes : STEP_ORDER.map((action, i) => ({ id: `preview-${action}-${i}`, action, status: 'pending', token: null }));
   const recentEvents = audit.slice(-4).reverse();
   const progress = chainNodes.length ? Math.round((chainNodes.filter((n) => n.status === 'burned').length / chainNodes.length) * 100) : 0;
+  const fairnessQueueCount = reviewQueue.length;
+  const scoredWorkflowCount = workflows.length;
 
   return (
     <div>
@@ -644,6 +835,45 @@ function OverviewTab({ workflows, reviewQueue, credentials, health, currentWorkf
         <MetricCard label="Intercepts" value={reviewQueue.length} msym="shield" color="error" sub="Flagged for review" delay={1} />
         <MetricCard label="Tokens" value={totalTokens} msym="key_visualizer" color="secondary" sub={`${burnedTokens} burned`} delay={2} />
         <MetricCard label="Credentials" value={credentials.length} msym="lock" color="success" sub="Isolated services" delay={3} />
+      </div>
+
+      {/* Fairness + Score spotlight */}
+      <div className="grid md:grid-cols-2 gap-4 mb-8">
+        <div className="card p-6">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--secondary)' }}>Fairness Insights</p>
+              <h3 className="font-headline text-lg font-bold mt-2">Bias checks stay visible while the workflow runs.</h3>
+            </div>
+            <M icon="balance" style={{ color: 'var(--secondary)', fontSize: 20 }} />
+          </div>
+          <p className="text-sm mb-4" style={{ color: 'var(--on-surface-variant)' }}>
+            {fairnessQueueCount > 0
+              ? `${fairnessQueueCount} workflow${fairnessQueueCount === 1 ? '' : 's'} currently flagged for review.`
+              : 'No active fairness flags right now. Upload a dataset to run fairness checks.'}
+          </p>
+          <button onClick={() => setPage('fairness')} className="btn-primary">
+            <M icon="open_in_new" style={{ fontSize: 14 }} /> Open Fairness Audit
+          </button>
+        </div>
+
+        <div className="card p-6">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--primary)' }}>Score Insights</p>
+              <h3 className="font-headline text-lg font-bold mt-2">Scoring output is tracked next to execution state.</h3>
+            </div>
+            <M icon="verified" style={{ color: 'var(--primary)', fontSize: 20 }} />
+          </div>
+          <p className="text-sm mb-4" style={{ color: 'var(--on-surface-variant)' }}>
+            {scoredWorkflowCount > 0
+              ? `${scoredWorkflowCount} workflow${scoredWorkflowCount === 1 ? '' : 's'} available for score inspection.`
+              : 'No scored workflows yet. Start a run to populate score evidence and rationale.'}
+          </p>
+          <button onClick={() => setPage('scoring')} className="btn-ghost">
+            <M icon="open_in_new" style={{ fontSize: 14 }} /> Open Score
+          </button>
+        </div>
       </div>
 
       {/* Active workflows */}
@@ -858,7 +1088,46 @@ function ChainTab({ chainNodes, currentWorkflow, workflows, selectedWorkflowId, 
 }
 
 /* ─── Dashboard: Launch Tab ─── */
-function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }) {
+function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction, onRunUploadedWorkflow, setPage }) {
+  const [uploadedWfId, setUploadedWfId] = useState(null);
+  const [uploadedWfName, setUploadedWfName] = useState('');
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef(null);
+
+  async function handleFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadBusy(true);
+    setUploadError('');
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const fd = new FormData();
+      fd.append('workflow', file);
+      const res = await fetch('/api/workflows/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.message || 'Upload failed');
+      setUploadedWfId(data.uploadedWorkflowId || data.id);
+      setUploadedWfName(json?.name || file.name);
+    } catch (err) {
+      setUploadError(err.message);
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+
+  async function handleRunUploaded() {
+    if (!uploadedWfId || !onRunUploadedWorkflow) return;
+    setUploadBusy(true);
+    try {
+      await onRunUploadedWorkflow(uploadedWfId);
+    } catch (err) {
+      setUploadError(err.message);
+    } finally {
+      setUploadBusy(false);
+    }
+  }
   const sel = tasks.find(t => t.id === selectedTask);
   const outcomeTone = {
     completed: { label: 'Expected: Complete', color: 'var(--success)', bg: 'rgba(52,211,153,0.1)' },
@@ -937,6 +1206,52 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }
           {sel.expected_status === 'aborted' && 'This scenario will terminate early — the kill-switch control revokes the chain.'}
         </p>
       )}
+
+      {/* Upload custom workflow divider */}
+      <div className="flex items-center gap-3 my-8">
+        <div style={{ flex: 1, height: 1, background: 'rgba(70,69,85,0.2)' }} />
+        <span className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--outline)' }}>or upload custom</span>
+        <div style={{ flex: 1, height: 1, background: 'rgba(70,69,85,0.2)' }} />
+      </div>
+
+      <div className="card p-5">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="p-2 rounded-xl" style={{ background: 'rgba(196,192,255,0.1)' }}>
+            <M icon="upload_file" style={{ fontSize: 20, color: 'var(--primary)' }} />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold font-headline">Upload Custom Workflow</h4>
+            <p className="text-[10px]" style={{ color: 'var(--on-surface-variant)' }}>JSON workflow definition. Runs through the same token-gating engine.</p>
+          </div>
+        </div>
+        <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileUpload} style={{ display: 'none' }} />
+        {!uploadedWfId ? (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadBusy}
+            className="btn-ghost w-full py-3 text-xs"
+            style={{ borderStyle: 'dashed', borderColor: 'rgba(196,192,255,0.25)' }}
+          >
+            <M icon="folder_open" style={{ fontSize: 16 }} />
+            {uploadBusy ? 'Uploading…' : 'Browse JSON file…'}
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: 'rgba(196,192,255,0.08)', border: '1px solid rgba(196,192,255,0.2)' }}>
+              <M icon="description" style={{ fontSize: 14, color: 'var(--primary)' }} />
+              <span className="text-xs font-bold flex-1 truncate">{uploadedWfName}</span>
+              <button onClick={() => { setUploadedWfId(null); setUploadedWfName(''); }} style={{ color: 'var(--outline)', fontSize: 12 }}>✕</button>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleRunUploaded} disabled={uploadBusy} className="btn-primary flex-1 py-2.5 text-xs">
+                <M icon="play_arrow" style={{ fontSize: 16 }} />
+                {uploadBusy ? 'Starting…' : 'Run Uploaded Workflow'}
+              </button>
+            </div>
+          </div>
+        )}
+        {uploadError && <p className="text-[10px] mt-2" style={{ color: 'var(--error)' }}>{uploadError}</p>}
+      </div>
     </div>
   );
 }

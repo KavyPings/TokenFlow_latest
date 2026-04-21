@@ -7,8 +7,9 @@
 //   GET    /api/fairness/datasets/:id                Get dataset details
 //   POST   /api/fairness/datasets/:id/analyze        Run fairness analysis
 //   GET    /api/fairness/datasets/:id/report         Get latest report
+//   POST   /api/fairness/datasets/:id/ai-report      Generate AI narrative report
 //   GET    /api/fairness/datasets/:id/audit-trail    Get audit history
-//   POST   /api/fairness/datasets/:id/mitigate       Run mitigation
+//   POST   /api/fairness/datasets/:id/mitigate       Run bias mitigation
 //   GET    /api/fairness/datasets/:id/mitigation-report  Get mitigation results
 //   GET    /api/fairness/datasets/:id/impacted-cases Get impacted rows
 //   GET    /api/fairness/review-queue                Get flagged violations
@@ -39,6 +40,7 @@ import {
 } from '../fairness/services/auditService.js';
 import { evaluateGate, getGateMetrics } from '../fairness/services/executionGateService.js';
 import { runMitigation, getLatestMitigationReport, getImpactedCases } from '../fairness/services/mitigationService.js';
+import { generateFairnessNarrative } from '../services/geminiService.js';
 
 const router = Router();
 
@@ -51,7 +53,7 @@ const upload = multer({
 // ───────────────────────────────────────────────────────────
 // POST /upload — Upload dataset with config
 // ───────────────────────────────────────────────────────────
-router.post('/upload', upload.single('file'), (req, res) => {
+router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     const db = getDb();
 
@@ -151,7 +153,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
     );
 
     // ── Log audit event ────────────────────────────────
-    logAuditEvent(db, {
+    await logAuditEvent(db, {
       datasetId,
       action: 'upload',
       details: {
@@ -174,7 +176,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
       WHERE id = ?
     `).run(JSON.stringify(profile), datasetId);
 
-    logAuditEvent(db, {
+    await logAuditEvent(db, {
       datasetId,
       action: 'profile',
       details: {
@@ -252,11 +254,11 @@ router.get('/datasets/:id', (req, res) => {
 // ───────────────────────────────────────────────────────────
 // POST /datasets/:id/analyze — Run fairness analysis
 // ───────────────────────────────────────────────────────────
-router.post('/datasets/:id/analyze', (req, res) => {
+router.post('/datasets/:id/analyze', async (req, res) => {
   try {
     const db = getDb();
     const dataset = db.prepare(`
-      SELECT id, config, data_blob, status
+      SELECT id, config, data_blob, profile, status
       FROM fairness_datasets
       WHERE id = ?
     `).get(req.params.id);
@@ -282,16 +284,13 @@ router.post('/datasets/:id/analyze', (req, res) => {
     const metrics = computeAllMetrics(rows, config);
 
     // ── Profile (re-compute if not done) ───────────────
-    let profile = safeJsonParse(
-      db.prepare('SELECT profile FROM fairness_datasets WHERE id = ?').get(req.params.id)?.profile,
-      null
-    );
+    let profile = safeJsonParse(dataset.profile, null);
     if (!profile) {
       profile = profileDataset(rows, config);
     }
 
     // ── Generate report (persists to DB) ───────────────
-    const report = generateReport(db, req.params.id, profile, metrics, config);
+    const report = await generateReport(db, req.params.id, profile, metrics, config);
 
     // ── Update dataset status ──────────────────────────
     db.prepare(`
@@ -301,7 +300,7 @@ router.post('/datasets/:id/analyze', (req, res) => {
     `).run(req.params.id);
 
     // ── Log audit event ────────────────────────────────
-    logAuditEvent(db, {
+    await logAuditEvent(db, {
       datasetId: req.params.id,
       action: 'analyze',
       details: {
@@ -315,10 +314,10 @@ router.post('/datasets/:id/analyze', (req, res) => {
     });
 
     // ── Evaluate execution gate post-analysis ──────────
-    const gateDecision = evaluateGate(db, { triggeredBy: 'analysis' });
+    const gateDecision = await evaluateGate(db, { triggeredBy: 'analysis' });
 
     // Log gate decision as audit event
-    logAuditEvent(db, {
+    await logAuditEvent(db, {
       datasetId: req.params.id,
       action: 'execution_gate',
       details: {
@@ -344,7 +343,7 @@ router.post('/datasets/:id/analyze', (req, res) => {
     // Log error in audit trail
     try {
       const db = getDb();
-      logAuditEvent(db, {
+      await logAuditEvent(db, {
         datasetId: req.params.id,
         action: 'analyze_error',
         details: { error: err.message },
@@ -365,7 +364,7 @@ router.post('/datasets/:id/analyze', (req, res) => {
 // ───────────────────────────────────────────────────────────
 // GET /datasets/:id/report — Get latest report
 // ───────────────────────────────────────────────────────────
-router.get('/datasets/:id/report', (req, res) => {
+router.get('/datasets/:id/report', async (req, res) => {
   try {
     const db = getDb();
 
@@ -375,7 +374,7 @@ router.get('/datasets/:id/report', (req, res) => {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Dataset not found' });
     }
 
-    const report = getLatestReport(db, req.params.id);
+    const report = await getLatestReport(db, req.params.id);
     if (!report) {
       return res.status(404).json({ error: 'NO_REPORT', message: 'No report generated yet. Run analysis first.' });
     }
@@ -388,9 +387,58 @@ router.get('/datasets/:id/report', (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────
+// POST /datasets/:id/ai-report — Generate AI narrative report
+// ───────────────────────────────────────────────────────────
+router.post('/datasets/:id/ai-report', async (req, res) => {
+  try {
+    const db = getDb();
+
+    // Verify dataset exists
+    const dataset = db.prepare(`
+      SELECT id, config, data_blob, profile, status
+      FROM fairness_datasets
+      WHERE id = ?
+    `).get(req.params.id);
+
+    if (!dataset) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Dataset not found' });
+    }
+
+    const report = await getLatestReport(db, req.params.id);
+    if (!report) {
+      return res.status(400).json({
+        error: 'NO_REPORT',
+        message: 'Run analysis first before generating an AI report.',
+      });
+    }
+
+    const config = safeJsonParse(dataset.config, {});
+    const rows = safeJsonParse(dataset.data_blob, []);
+    const profile = safeJsonParse(dataset.profile, null) || {};
+
+    // Recompute metrics for context (cheap — no DB writes)
+    const { computeAllMetrics } = await import('../fairness/services/fairnessMetrics.js');
+    const metrics = rows.length > 0 ? computeAllMetrics(rows, config) : {};
+
+    console.log(`[FAIRNESS] Generating AI report for dataset ${req.params.id}`);
+    const result = await generateFairnessNarrative(report, metrics, profile);
+
+    return res.json({
+      success: true,
+      dataset_id: req.params.id,
+      report_id: report.id,
+      ...result,
+    });
+  } catch (err) {
+    console.error('[FAIRNESS] AI report error:', err);
+    return res.status(500).json({ error: 'AI_REPORT_FAILED', message: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────
 // GET /datasets/:id/audit-trail — Get audit history
 // ───────────────────────────────────────────────────────────
-router.get('/datasets/:id/audit-trail', (req, res) => {
+router.get('/datasets/:id/audit-trail', async (req, res) => {
   try {
     const db = getDb();
 
@@ -399,7 +447,7 @@ router.get('/datasets/:id/audit-trail', (req, res) => {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Dataset not found' });
     }
 
-    const trail = getAuditTrail(db, req.params.id);
+    const trail = await getAuditTrail(db, req.params.id);
     return res.json({ dataset_id: req.params.id, audit_trail: trail, total: trail.length });
   } catch (err) {
     console.error('[FAIRNESS] Audit trail error:', err);
@@ -410,7 +458,7 @@ router.get('/datasets/:id/audit-trail', (req, res) => {
 // ───────────────────────────────────────────────────────────
 // POST /datasets/:id/mitigate — Run bias mitigation
 // ───────────────────────────────────────────────────────────
-router.post('/datasets/:id/mitigate', (req, res) => {
+router.post('/datasets/:id/mitigate', async (req, res) => {
   try {
     const db = getDb();
     const dataset = db.prepare(`
@@ -431,7 +479,7 @@ router.post('/datasets/:id/mitigate', (req, res) => {
     const rows = safeJsonParse(dataset.data_blob, []);
 
     // Get latest report ID
-    const latestReport = getLatestReport(db, req.params.id);
+    const latestReport = await getLatestReport(db, req.params.id);
     if (!latestReport) {
       return res.status(400).json({ error: 'NO_REPORT', message: 'No report found. Run analysis first.' });
     }
@@ -439,7 +487,7 @@ router.post('/datasets/:id/mitigate', (req, res) => {
     const mitigationReport = runMitigation(db, req.params.id, latestReport.id, rows, config);
 
     // Log audit event
-    logAuditEvent(db, {
+    await logAuditEvent(db, {
       datasetId: req.params.id,
       action: 'mitigate',
       details: {
@@ -494,10 +542,10 @@ router.get('/datasets/:id/impacted-cases', (req, res) => {
 // ───────────────────────────────────────────────────────────
 // GET /review-queue — Get flagged violations
 // ───────────────────────────────────────────────────────────
-router.get('/review-queue', (req, res) => {
+router.get('/review-queue', async (req, res) => {
   try {
     const db = getDb();
-    const result = getReviewQueue(db, {
+    const result = await getReviewQueue(db, {
       dataset_id: req.query.dataset_id,
       status: req.query.status,
       severity: req.query.severity,
@@ -515,7 +563,7 @@ router.get('/review-queue', (req, res) => {
 // ───────────────────────────────────────────────────────────
 // PATCH /review-queue/:id — Update review item status
 // ───────────────────────────────────────────────────────────
-router.patch('/review-queue/:id', (req, res) => {
+router.patch('/review-queue/:id', async (req, res) => {
   try {
     const db = getDb();
     const { status, reviewer, review_notes } = req.body || {};
@@ -527,7 +575,7 @@ router.patch('/review-queue/:id', (req, res) => {
       });
     }
 
-    const updated = updateReviewItem(db, req.params.id, {
+    const updated = await updateReviewItem(db, req.params.id, {
       status,
       reviewer: reviewer || req.auth?.sub || 'anonymous',
       review_notes: review_notes ? sanitizeString(review_notes, 2000) : null,
@@ -538,7 +586,7 @@ router.patch('/review-queue/:id', (req, res) => {
     }
 
     // Log the review action
-    logAuditEvent(db, {
+    await logAuditEvent(db, {
       datasetId: updated.dataset_id,
       action: 'review_update',
       details: {
@@ -551,7 +599,7 @@ router.patch('/review-queue/:id', (req, res) => {
     });
 
     // Re-evaluate gate after review status change
-    const gateDecision = evaluateGate(db, { triggeredBy: 'review_update' });
+    const gateDecision = await evaluateGate(db, { triggeredBy: 'review_update' });
 
     return res.json({ success: true, item: updated, gate: gateDecision });
   } catch (err) {
@@ -563,11 +611,11 @@ router.patch('/review-queue/:id', (req, res) => {
 // ───────────────────────────────────────────────────────────
 // GET /execution-gate — Read-only gate status + metrics
 // ───────────────────────────────────────────────────────────
-router.get('/execution-gate', (req, res) => {
+router.get('/execution-gate', async (req, res) => {
   try {
     const db = getDb();
-    const gate = evaluateGate(db, { triggeredBy: 'preflight_check' });
-    const metrics = getGateMetrics(db);
+    const gate = await evaluateGate(db, { triggeredBy: 'preflight_check' });
+    const metrics = await getGateMetrics(db);
     return res.json({ gate, metrics });
   } catch (err) {
     console.error('[FAIRNESS] Gate status error:', err);
