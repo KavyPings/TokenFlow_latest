@@ -2,6 +2,16 @@
 
 This guide explains what each feature does, when to use it, and what inputs are required.
 
+## What This Version Includes
+
+This guide is updated for the current build, including:
+
+- Fairness upload and schema mapping flow (CSV/JSON)
+- Deterministic fairness analysis and violation queue
+- Threshold-based mitigation with impacted-case tracking
+- Deterministic execution gate behavior (`shadow` and `enforce`)
+- Mission workflow blocking behavior when gate is in enforce mode
+
 ## What TokenFlow Is
 
 TokenFlow is a safety platform for AI workflows.  
@@ -81,6 +91,14 @@ Use this tab to audit datasets for bias and apply mitigation. You can:
 - Track impacted records and threshold deltas
 - View immutable fairness audit trail
 - Monitor fairness execution gate status
+
+Fairness UI tabs are:
+
+- Upload and Configure
+- Analysis Results
+- Mitigation
+- Review Queue
+- Audit Trail
 
 ### 8) Mock Launch
 
@@ -179,6 +197,7 @@ Mitigation has stricter requirements than analysis.
 - The mapped `predicted_score` column must exist in the dataset
 - Score values should be numeric probabilities (typically 0 to 1)
 - Protected attributes and reference groups must already be valid
+- At least one analyzed fairness report must already exist for that dataset
 
 ### Why this is required
 
@@ -192,6 +211,37 @@ If you get:
 `Mitigation requires a predicted_score column. Add predicted_score to column_mappings.`
 
 It means analysis can run, but mitigation is blocked because fairness mitigation depends on per-row scores.
+
+---
+
+## Review Queue and Gate Interaction
+
+Fairness review items have status values like:
+
+- `open`
+- `acknowledged`
+- `resolved`
+- `dismissed`
+
+High-severity items that remain `open` or `acknowledged` can keep the fairness gate in `BLOCK`.
+
+---
+
+## When Workflow Start Gets Blocked
+
+If fairness gate mode is `enforce`, mission workflow start can be blocked when:
+
+- A latest analyzed fairness report is `high` risk, or
+- Unresolved high-severity fairness review items exist
+
+In that case, backend responds with:
+
+- Error code: `FAIRNESS_GATE_BLOCKED`
+- HTTP status: `423 Locked`
+
+If mode is `shadow`, the block decision is still calculated and logged, but mission workflows continue.
+
+Testbench workflows are not blocked by fairness gate.
 
 ---
 
@@ -287,3 +337,13 @@ Mode controls:
 - `enforce`: actively blocks mission workflow start
 
 This gate does not block testbench workflows.
+
+---
+
+## Local Dev Environment Note
+
+If you run locally with Vite + Node:
+
+- Keep `VITE_API_BASE_URL` empty for local proxy mode
+- Vite proxies `/api` and `/ws` to backend
+- Missing `.env` can still work in local mode because code has defaults (port, DB path, mock auth behavior)
