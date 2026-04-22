@@ -11,9 +11,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { round, safeDiv } from '../utils/mathHelpers.js';
 import { computeAllMetrics, toBinary } from './fairnessMetrics.js';
 
-/** Number of bins for threshold sweep */
-const NUM_BINS = 100;
-
 /**
  * Run mitigation on a dataset using threshold adjustment.
  * Finds per-group optimal thresholds that maximize fairness
@@ -43,79 +40,9 @@ export function runMitigation(db, datasetId, reportId, rows, config) {
   // ── Before metrics ──────────────────────────────────────
   const beforeMetrics = computeAllMetrics(rows, config);
 
-  // ── Compute per-group optimal thresholds ───────────────
-  const groupThresholds = {};
-  const allImpactedCases = [];
-
-  for (const attr of protectedAttrs) {
-    const { column, reference_group } = attr;
-    groupThresholds[column] = {};
-
-    // Partition rows by group, collect scores
-    const groupBuckets = new Map();
-    for (const row of rows) {
-      const grp = String(row[column] ?? '__null__');
-      if (!groupBuckets.has(grp)) groupBuckets.set(grp, []);
-      groupBuckets.get(grp).push({
-        recordId: row[recordIdCol],
-        score: Number(row[scoreCol]),
-        actual: toBinary(row[targetCol]),
-        originalPred: toBinary(row[predictedCol]),
-      });
-    }
-
-    // Get reference group's selection rate (their threshold defines the target)
-    const refRows = groupBuckets.get(String(reference_group)) || [];
-    const refSelectionRate = safeDiv(
-      refRows.filter(r => r.originalPred === 1).length,
-      refRows.length
-    );
-
-    // For each non-reference group, find threshold that matches ref selection rate
-    for (const [grp, grpRows] of groupBuckets) {
-      if (grp === String(reference_group)) {
-        groupThresholds[column][grp] = { threshold: 0.5, adjusted: false };
-        continue;
-      }
-
-      const optimalThreshold = findOptimalThreshold(grpRows, refSelectionRate);
-      groupThresholds[column][grp] = { threshold: optimalThreshold, adjusted: true };
-
-      // Collect impacted cases: rows where new prediction differs from original
-      for (const r of grpRows) {
-        if (!Number.isFinite(r.score)) continue;
-        const newPred = r.score >= optimalThreshold ? 1 : 0;
-        if (newPred !== r.originalPred) {
-          allImpactedCases.push({
-            recordId: r.recordId,
-            originalPred: r.originalPred,
-            adjustedPred: newPred,
-            groupName: grp,
-            attribute: column,
-            triggerMetric: 'statistical_parity_difference',
-            originalScore: r.score,
-            adjustedThreshold: optimalThreshold,
-          });
-        }
-      }
-    }
-  }
-
-  // ── Apply adjusted predictions and recompute ───────────
-  const adjustedRows = rows.map(row => {
-    const adjusted = { ...row };
-    for (const attr of protectedAttrs) {
-      const grp = String(row[attr.column] ?? '__null__');
-      const threshInfo = groupThresholds[attr.column]?.[grp];
-      if (threshInfo?.adjusted) {
-        const score = Number(row[scoreCol]);
-        if (Number.isFinite(score)) {
-          adjusted[predictedCol] = score >= threshInfo.threshold ? 1 : 0;
-        }
-      }
-    }
-    return adjusted;
-  });
+  // ── Build deterministic mitigation plan + apply ─────────
+  const mitigationPlan = buildMitigationPlan(rows, config);
+  const { adjustedRows, impactedCases } = applyMitigationToRows(rows, config, mitigationPlan);
 
   // ── After metrics ──────────────────────────────────────
   const afterMetrics = computeAllMetrics(adjustedRows, config);
@@ -129,11 +56,11 @@ export function runMitigation(db, datasetId, reportId, rows, config) {
     dataset_id: datasetId,
     report_id: reportId,
     method: 'threshold_adjustment',
-    config: { num_bins: NUM_BINS, group_thresholds: groupThresholds },
+    config: mitigationPlan,
     before_summary: summarizeMetrics(beforeMetrics),
     after_summary: summarizeMetrics(afterMetrics),
     deltas,
-    impacted_count: allImpactedCases.length,
+    impacted_count: impactedCases.length,
     created_at: new Date().toISOString(),
   };
 
@@ -148,11 +75,11 @@ export function runMitigation(db, datasetId, reportId, rows, config) {
     JSON.stringify(mitigationReport.before_summary),
     JSON.stringify(mitigationReport.after_summary),
     JSON.stringify(deltas),
-    allImpactedCases.length
+    impactedCases.length
   );
 
   // ── Persist impacted cases ─────────────────────────────
-  if (allImpactedCases.length > 0) {
+  if (impactedCases.length > 0) {
     const stmt = db.prepare(`
       INSERT INTO fairness_impacted_cases
         (id, dataset_id, mitigation_id, record_id, original_pred, adjusted_pred, group_name, attribute, trigger_metric, original_score, adjusted_threshold)
@@ -170,7 +97,7 @@ export function runMitigation(db, datasetId, reportId, rows, config) {
       }
     });
 
-    insertCases(allImpactedCases);
+    insertCases(impactedCases);
   }
 
   return mitigationReport;
@@ -187,39 +114,189 @@ export function runMitigation(db, datasetId, reportId, rows, config) {
  */
 function findOptimalThreshold(groupRows, targetSelectionRate) {
   if (groupRows.length === 0 || targetSelectionRate === null) return 0.5;
+  const scores = groupRows
+    .map((r) => Number(r.score))
+    .filter((v) => Number.isFinite(v))
+    .sort((a, b) => b - a);
 
-  // Build histogram of scores into fixed bins
-  const bins = new Array(NUM_BINS + 1).fill(0);
-  let validCount = 0;
+  if (scores.length === 0) return 0.5;
 
-  for (const r of groupRows) {
-    if (!Number.isFinite(r.score)) continue;
-    const clampedScore = Math.max(0, Math.min(1, r.score));
-    const binIdx = Math.min(Math.floor(clampedScore * NUM_BINS), NUM_BINS);
-    bins[binIdx]++;
-    validCount++;
+  const desiredSelected = Math.max(0, Math.min(scores.length, Math.round(targetSelectionRate * scores.length)));
+  if (desiredSelected === 0) return scores[0] + 1e-9;
+  if (desiredSelected >= scores.length) return scores[scores.length - 1] - 1e-9;
+
+  const lower = scores[desiredSelected];
+  const upper = scores[desiredSelected - 1];
+  return round((upper + lower) / 2, 6);
+}
+
+export function applyMitigationToRows(rows, config, mitigationConfig) {
+  if (mitigationConfig?.strategy === 'target_rate_rebalancing') {
+    const plan = buildMitigationPlan(rows, config, mitigationConfig.group_targets || null);
+    return {
+      adjustedRows: plan.adjustedRows,
+      impactedCases: plan.impactedCases,
+    };
   }
 
-  if (validCount === 0) return 0.5;
+  const groupThresholds = mitigationConfig?.group_thresholds || mitigationConfig || {};
+  const mappings = config.column_mappings || {};
+  const scoreCol = mappings.predicted_score;
+  const predictedCol = mappings.predicted_outcome;
+  const recordIdCol = mappings.record_id;
+  const protectedAttrs = config.protected_attributes || [];
+  const impactedCases = [];
 
-  // Sweep from high threshold to low — find where selection rate ≈ target
-  let selected = 0;
-  let bestThreshold = 0.5;
-  let bestDiff = Infinity;
+  const adjustedRows = rows.map((row) => {
+    const adjusted = { ...row };
+    const originalPred = toBinary(row[predictedCol]);
+    let adjustedPred = originalPred;
+    let lastApplied = null;
 
-  for (let i = NUM_BINS; i >= 0; i--) {
-    selected += bins[i];
-    const rate = safeDiv(selected, validCount);
-    if (rate === null) continue;
+    for (const attr of protectedAttrs) {
+      const grp = String(row[attr.column] ?? '__null__');
+      const threshInfo = groupThresholds[attr.column]?.[grp];
+      if (!threshInfo?.adjusted) continue;
 
-    const diff = Math.abs(rate - targetSelectionRate);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      bestThreshold = i / NUM_BINS;
+      const rawScore = scoreCol ? Number(row[scoreCol]) : NaN;
+      const effectiveScore = Number.isFinite(rawScore) ? rawScore : originalPred;
+      adjustedPred = effectiveScore >= threshInfo.threshold ? 1 : 0;
+      lastApplied = {
+        groupName: grp,
+        attribute: attr.column,
+        originalScore: effectiveScore,
+        adjustedThreshold: threshInfo.threshold,
+      };
+    }
+
+    adjusted[predictedCol] = adjustedPred;
+
+    if (lastApplied && adjustedPred !== originalPred) {
+      impactedCases.push({
+        recordId: row[recordIdCol],
+        originalPred,
+        adjustedPred,
+        groupName: lastApplied.groupName,
+        attribute: lastApplied.attribute,
+        triggerMetric: 'statistical_parity_difference',
+        originalScore: lastApplied.originalScore,
+        adjustedThreshold: lastApplied.adjustedThreshold,
+      });
+    }
+
+    return adjusted;
+  });
+
+  return { adjustedRows, impactedCases };
+}
+
+function buildMitigationPlan(rows, config, presetGroupTargets = null) {
+  const mappings = config.column_mappings || {};
+  const scoreCol = mappings.predicted_score;
+  const predictedCol = mappings.predicted_outcome;
+  const targetCol = mappings.target_outcome;
+  const recordIdCol = mappings.record_id;
+  const protectedAttrs = config.protected_attributes || [];
+
+  const originalPred = rows.map((row) => toBinary(row[predictedCol]));
+  const workingPred = [...originalPred];
+
+  const groupThresholds = {};
+  const groupTargets = {};
+
+  for (const attr of protectedAttrs) {
+    const column = attr.column;
+    const referenceGroup = String(attr.reference_group);
+    groupThresholds[column] = {};
+    groupTargets[column] = {};
+
+    const indicesByGroup = new Map();
+    for (let i = 0; i < rows.length; i++) {
+      const grp = String(rows[i][column] ?? '__null__');
+      if (!indicesByGroup.has(grp)) indicesByGroup.set(grp, []);
+      indicesByGroup.get(grp).push(i);
+    }
+
+    const refIndices = indicesByGroup.get(referenceGroup) || [];
+    const refPositives = refIndices.filter((idx) => workingPred[idx] === 1).length;
+    const refRate = safeDiv(refPositives, refIndices.length) ?? 0;
+    groupTargets[column][referenceGroup] = round(refRate, 6);
+
+    for (const [grp, groupIndices] of indicesByGroup.entries()) {
+      if (grp === referenceGroup) {
+        groupThresholds[column][grp] = { threshold: 0.5, adjusted: false };
+        continue;
+      }
+
+      const currentPositives = groupIndices.filter((idx) => workingPred[idx] === 1).length;
+      const targetRate = presetGroupTargets?.[column]?.[grp] ?? refRate;
+      const desiredPositives = Math.max(0, Math.min(groupIndices.length, Math.round(targetRate * groupIndices.length)));
+      const needed = desiredPositives - currentPositives;
+
+      groupTargets[column][grp] = round(targetRate, 6);
+
+      const scoredRows = groupIndices.map((idx) => {
+        const rawScore = scoreCol ? Number(rows[idx][scoreCol]) : NaN;
+        const score = Number.isFinite(rawScore) ? rawScore : originalPred[idx];
+        return {
+          idx,
+          score,
+          actual: toBinary(rows[idx][targetCol]),
+          recordId: String(rows[idx][recordIdCol] ?? idx),
+        };
+      });
+
+      const optimalThreshold = findOptimalThreshold(
+        scoredRows.map((r) => ({ score: r.score })),
+        targetRate
+      );
+      groupThresholds[column][grp] = { threshold: optimalThreshold, adjusted: true };
+
+      if (needed > 0) {
+        const candidates = scoredRows
+          .filter((r) => workingPred[r.idx] === 0)
+          .sort((a, b) => (b.score - a.score) || (b.actual - a.actual) || a.recordId.localeCompare(b.recordId));
+        for (const c of candidates.slice(0, needed)) {
+          workingPred[c.idx] = 1;
+        }
+      } else if (needed < 0) {
+        const candidates = scoredRows
+          .filter((r) => workingPred[r.idx] === 1)
+          .sort((a, b) => (a.score - b.score) || (a.actual - b.actual) || a.recordId.localeCompare(b.recordId));
+        for (const c of candidates.slice(0, Math.abs(needed))) {
+          workingPred[c.idx] = 0;
+        }
+      }
     }
   }
 
-  return round(bestThreshold, 4);
+  const impactedCases = [];
+  const adjustedRows = rows.map((row, idx) => {
+    const adjusted = { ...row };
+    adjusted[predictedCol] = workingPred[idx];
+    if (workingPred[idx] !== originalPred[idx]) {
+      const attr = protectedAttrs[0];
+      impactedCases.push({
+        recordId: row[recordIdCol],
+        originalPred: originalPred[idx],
+        adjustedPred: workingPred[idx],
+        groupName: attr ? String(row[attr.column] ?? '__null__') : 'n/a',
+        attribute: attr?.column || 'n/a',
+        triggerMetric: 'statistical_parity_difference',
+        originalScore: scoreCol && Number.isFinite(Number(row[scoreCol])) ? Number(row[scoreCol]) : originalPred[idx],
+        adjustedThreshold: groupThresholds[attr?.column || '']?.[String(row[attr?.column] ?? '__null__')]?.threshold ?? 0.5,
+      });
+    }
+    return adjusted;
+  });
+
+  return {
+    strategy: 'target_rate_rebalancing',
+    group_thresholds: groupThresholds,
+    group_targets: groupTargets,
+    adjustedRows,
+    impactedCases,
+  };
 }
 
 /**

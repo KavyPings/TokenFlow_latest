@@ -16,8 +16,8 @@ async function initGemini() {
   try {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    console.log('[GEMINI] ✓ Gemini 1.5 Flash initialized');
+    model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    console.log('[GEMINI] ✓ Gemini 2.5 Flash initialized');
   } catch (err) {
     console.warn('[GEMINI] Could not initialize Gemini SDK:', err.message);
   }
@@ -266,8 +266,8 @@ export async function runGeminiStep(action, applicant, context = {}) {
  */
 export function getGeminiStatus() {
   return {
-    enabled: !!USE_REAL_GEMINI,
-    model: 'gemini-1.5-flash',
+    enabled: !!model,
+    model: 'gemini-2.5-flash',
     api_key_configured: !!process.env.GEMINI_API_KEY,
   };
 }
@@ -308,10 +308,14 @@ export async function generateFairnessNarrative(report, metrics, profile) {
     return {
       narrative: text,
       generated_at,
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       ai_powered: true,
     };
   } catch (err) {
+    if (USE_REAL_GEMINI) {
+      console.error('[GEMINI] Fairness narrative generation failed:', err.message);
+      throw new Error(`Gemini API Error: ${err.message}`);
+    }
     console.warn('[GEMINI] Fairness narrative generation failed:', err.message);
     return {
       narrative: buildDeterministicNarrative(report, metrics, profile),
@@ -378,5 +382,5 @@ function buildDeterministicNarrative(report, metrics, profile) {
       ? 'Immediate remediation is recommended. Consider re-weighting training samples, applying threshold adjustments for affected groups, and conducting a manual case review via the Review Queue before any production deployment.'
       : 'Moderate remediation is advised. Review flagged violations in the Review Queue and apply targeted threshold adjustments. Re-run analysis after mitigation to confirm improvements.';
 
-  return `${riskSentence}\n\n${profileDetail}${violationDetail}${violations.length > 1 ? `An additional ${violations.length - 1} secondary violation${violations.length > 2 ? 's were' : ' was'} also identified across other protected attributes and metrics. ` : ''}All findings have been logged to the immutable audit trail.\n\n${recommendation}\n\n[This report was generated using the deterministic template engine. Add your GEMINI_API_KEY to .env to generate AI-powered narrative reports with deeper contextual analysis.]`;
+  return `${riskSentence}\n\n${profileDetail}${violationDetail}${violations.length > 1 ? `An additional ${violations.length - 1} secondary violation${violations.length > 2 ? 's were' : ' was'} also identified across other protected attributes and metrics. ` : ''}All findings have been logged to the immutable audit trail.\n\n${recommendation}`;
 }

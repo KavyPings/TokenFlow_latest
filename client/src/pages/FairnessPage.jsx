@@ -13,6 +13,38 @@ const M = ({ icon, className = '', style }) => (
 function pct(v) { return v == null ? '—' : `${(v * 100).toFixed(1)}%`; }
 function fmt(v, d = 4) { return v == null ? '—' : Number(v).toFixed(d); }
 
+function computeMitigationEffectiveness(deltas = {}) {
+  const perAttribute = Object.values(deltas.per_attribute || {});
+  let improved = 0;
+  let worsened = 0;
+
+  for (const attr of perAttribute) {
+    for (const change of Object.values(attr.fairness || {})) {
+      const spd = Number(change.spd_delta || 0);
+      const eod = Number(change.eod_delta || 0);
+      const aod = Number(change.aod_delta || 0);
+      const dir = Number(change.dir_delta || 0);
+      const signal = (spd < 0 ? 1 : spd > 0 ? -1 : 0)
+        + (eod < 0 ? 1 : eod > 0 ? -1 : 0)
+        + (aod < 0 ? 1 : aod > 0 ? -1 : 0)
+        + (dir > 0 ? 1 : dir < 0 ? -1 : 0);
+      if (signal > 0) improved++;
+      if (signal < 0) worsened++;
+    }
+  }
+
+  if (improved === 0 && worsened === 0) {
+    return { label: 'No measurable fairness shift', tone: 'neutral' };
+  }
+  if (improved > worsened) {
+    return { label: `Improving (${improved} improved vs ${worsened} worsened)`, tone: 'good' };
+  }
+  if (worsened > improved) {
+    return { label: `Needs review (${worsened} worsened vs ${improved} improved)`, tone: 'bad' };
+  }
+  return { label: `Mixed impact (${improved} improved / ${worsened} worsened)`, tone: 'neutral' };
+}
+
 const RISK_COLORS = {
   low:    { bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.3)', text: 'var(--success)', icon: 'verified' },
   medium: { bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.3)', text: 'var(--warning)', icon: 'warning' },
@@ -181,6 +213,7 @@ export default function FairnessPage() {
   const [auditTrail, setAuditTrail] = useState([]);
   const [reviewQueue, setReviewQueue] = useState({ items: [], total: 0 });
   const [mitigationReport, setMitigationReport] = useState(null);
+  const [mitigatedDatasetLinks, setMitigatedDatasetLinks] = useState(null);
   const [gateStatus, setGateStatus] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -208,8 +241,17 @@ export default function FairnessPage() {
     if (!activeDatasetId) return;
     apiGet(`/api/fairness/datasets/${activeDatasetId}/report`).then(setReport).catch(() => setReport(null));
     apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => setAuditTrail([]));
-    apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`).then(setReviewQueue).catch(() => setReviewQueue({ items: [], total: 0 }));
+    apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`)
+      .then(setReviewQueue)
+      .catch((e) => {
+        setReviewQueue({ items: [], total: 0 });
+        setError(`Review queue load failed: ${e.message}`);
+      });
     apiGet(`/api/fairness/datasets/${activeDatasetId}/mitigation-report`).then(setMitigationReport).catch(() => setMitigationReport(null));
+    setMitigatedDatasetLinks({
+      json_url: `/api/fairness/datasets/${activeDatasetId}/mitigated-dataset?format=json`,
+      csv_url: `/api/fairness/datasets/${activeDatasetId}/mitigated-dataset?format=csv`,
+    });
   }, [activeDatasetId]);
 
   async function handleUploadComplete(datasetId) {
@@ -230,7 +272,9 @@ export default function FairnessPage() {
       if (data.gate) setGateStatus(data.gate);
       setSuccess(`Analysis complete — Risk level: ${data.report.risk_level.toUpperCase()}`);
       apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => {});
-      apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`).then(setReviewQueue).catch(() => {});
+      apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`).then(setReviewQueue).catch((e) => {
+        setError(`Review queue refresh failed: ${e.message}`);
+      });
       setTimeout(() => setSuccess(''), 6000);
     } catch (e) { setError(e.message); }
     setBusy('');
@@ -243,6 +287,10 @@ export default function FairnessPage() {
     try {
       const data = await apiPost(`/api/fairness/datasets/${activeDatasetId}/mitigate`);
       setMitigationReport(data.mitigation);
+      setMitigatedDatasetLinks(data.mitigated_dataset || {
+        json_url: `/api/fairness/datasets/${activeDatasetId}/mitigated-dataset?format=json`,
+        csv_url: `/api/fairness/datasets/${activeDatasetId}/mitigated-dataset?format=csv`,
+      });
       setTab('mitigation');
       setSuccess(`Mitigation complete — ${data.mitigation.impacted_count} cases adjusted.`);
       apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => {});
@@ -397,8 +445,15 @@ export default function FairnessPage() {
           <AnimatePresence mode="wait">
             {tab === 'upload' && <UploadTab key="upload" onComplete={handleUploadComplete} setError={setError} />}
             {tab === 'results' && <ResultsTab key="results" report={report} activeDataset={activeDataset} />}
-            {tab === 'mitigation' && <MitigationTab key="mitigation" mitigationReport={mitigationReport} activeDataset={activeDataset} />}
-            {tab === 'review' && <ReviewTab key="review" queue={reviewQueue} onAction={handleReviewAction} />}
+            {tab === 'mitigation' && (
+              <MitigationTab
+                key="mitigation"
+                mitigationReport={mitigationReport}
+                activeDataset={activeDataset}
+                mitigatedDatasetLinks={mitigatedDatasetLinks}
+              />
+            )}
+            {tab === 'review' && <ReviewTab key="review" queue={reviewQueue} report={report} onAction={handleReviewAction} />}
             {tab === 'audit' && <AuditTab key="audit" trail={auditTrail} />}
           </AnimatePresence>
         </div>
@@ -430,6 +485,8 @@ function UploadTab({ onComplete, setError }) {
   // Preview
   const [previewHeaders, setPreviewHeaders] = useState([]);
   const [previewRows, setPreviewRows] = useState([]);
+  const [showGuide, setShowGuide] = useState(false);
+  const [guideSection, setGuideSection] = useState('format');
 
   function handleFileSelect(e) {
     const f = e.target.files[0];
@@ -534,7 +591,18 @@ function UploadTab({ onComplete, setError }) {
       <div className="space-y-4">
         {/* Step 1: File */}
         <div className="card p-5">
-          <StepHeader step="1" title="Select Dataset File" icon="attach_file" />
+          <div className="flex items-center justify-between gap-2">
+            <StepHeader step="1" title="Select Dataset File" icon="attach_file" />
+            <button
+              onClick={() => setShowGuide(true)}
+              className="btn-ghost text-[10px] py-1.5 px-2.5"
+              style={{ borderColor: 'rgba(196,192,255,0.25)' }}
+              type="button"
+            >
+              <M icon="help" style={{ fontSize: 14 }} />
+              Dataset Guide
+            </button>
+          </div>
           <div className="upload-dropzone mt-3" onClick={() => fileRef.current?.click()} style={{ cursor: 'pointer' }}>
             <input ref={fileRef} type="file" accept=".csv,.json" onChange={handleFileSelect} style={{ display: 'none' }} />
             <M icon="cloud_upload" style={{ fontSize: 28, color: 'var(--primary)' }} />
@@ -629,6 +697,149 @@ function UploadTab({ onComplete, setError }) {
           <M icon="rocket_launch" style={{ fontSize: 18 }} />
           {busy ? 'Uploading & Profiling…' : 'Upload & Profile Dataset'}
         </button>
+      </div>
+      {showGuide && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)' }}
+          onClick={() => setShowGuide(false)}
+        >
+          <div
+            className="card p-0 w-full max-w-4xl max-h-[88vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b" style={{ borderColor: 'rgba(196,192,255,0.16)', background: 'rgba(196,192,255,0.05)' }}>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold uppercase tracking-[0.1em] font-headline">
+                  Fairness Dataset Format & Workflow Guide
+                </h3>
+                <button onClick={() => setShowGuide(false)} className="btn-ghost text-[10px] py-1 px-2" type="button">
+                  <M icon="close" style={{ fontSize: 14 }} />
+                  Close
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  { id: 'format', label: 'Dataset Format', icon: 'dataset' },
+                  { id: 'example', label: 'Examples', icon: 'code' },
+                  { id: 'outputs', label: 'Feature Outputs', icon: 'analytics' },
+                  { id: 'next', label: 'Next Steps', icon: 'checklist' },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setGuideSection(s.id)}
+                    className="btn-ghost text-[10px] py-1.5 px-2.5"
+                    style={{
+                      borderColor: guideSection === s.id ? 'rgba(196,192,255,0.4)' : 'rgba(196,192,255,0.18)',
+                      background: guideSection === s.id ? 'rgba(196,192,255,0.16)' : 'transparent',
+                      color: guideSection === s.id ? 'var(--primary)' : 'var(--on-surface-variant)',
+                    }}
+                  >
+                    <M icon={s.icon} style={{ fontSize: 13 }} />
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 overflow-auto max-h-[calc(88vh-132px)] text-xs" style={{ color: 'var(--on-surface-variant)' }}>
+              {guideSection === 'format' && (
+                <div className="space-y-4">
+                  <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
+                    <p className="font-bold mb-2" style={{ color: 'var(--on-surface)' }}>Required structure</p>
+                    <p>Upload CSV or JSON row-object arrays with at least these columns mapped:</p>
+                    <p className="mt-1">`record_id`, `target_outcome`, `predicted_outcome`, `timestamp`, `model_version`, plus at least one protected attribute (for example `gender`, `race`, or `age_group`).</p>
+                    <p className="mt-1">`predicted_score` is optional but recommended. It improves mitigation quality and lets the system make smarter flips.</p>
+                  </div>
+                  <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
+                    <p className="font-bold mb-2" style={{ color: 'var(--on-surface)' }}>Value constraints</p>
+                    <p>- `target_outcome` and `predicted_outcome` must be binary values (`0/1`, `true/false`, `yes/no`).</p>
+                    <p>- Required mapped fields should not contain null/empty values.</p>
+                    <p>- Each protected attribute should have at least 2 observed groups.</p>
+                  </div>
+                </div>
+              )}
+              {guideSection === 'example' && (
+                <div className="space-y-4">
+                  <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="font-bold" style={{ color: 'var(--on-surface)' }}>Example CSV</p>
+                      <a className="btn-primary text-[10px] py-1.5 px-2.5" href="/mock/fairness_demo_dataset.json" download>
+                        <M icon="download" style={{ fontSize: 13 }} />
+                        Download Demo JSON
+                      </a>
+                    </div>
+                    <pre className="text-[10px] p-3 rounded-xl overflow-auto whitespace-pre" style={{ background: 'var(--surface-container)', color: 'var(--on-surface-variant)' }}>{`id,gender,race,actual,predicted,score,ts,model_ver
+1,female,black,1,0,0.31,2026-04-01T10:00:00Z,v2
+2,male,white,1,1,0.84,2026-04-01T10:01:00Z,v2
+3,female,white,0,0,0.27,2026-04-01T10:02:00Z,v2`}</pre>
+                  </div>
+                  <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
+                    <p className="font-bold mb-2" style={{ color: 'var(--on-surface)' }}>Example JSON row shape</p>
+                    <pre className="text-[10px] p-3 rounded-xl overflow-auto whitespace-pre" style={{ background: 'var(--surface-container)', color: 'var(--on-surface-variant)' }}>{`{
+  "id": "R-001",
+  "gender": "female",
+  "race": "black",
+  "actual": 1,
+  "predicted": 0,
+  "score": 0.31,
+  "ts": "2026-04-01T10:00:00Z",
+  "model_ver": "v2"
+}`}</pre>
+                  </div>
+                </div>
+              )}
+              {guideSection === 'outputs' && (
+                <div className="space-y-3">
+                  <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
+                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>Analysis tab output</p>
+                    <p>Risk level, violation summary, per-group selection/TPR/FPR, fairness metrics (SPD, DIR, EOD, AOD), disadvantaged groups, and detailed policy-level violations.</p>
+                  </div>
+                  <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
+                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>Mitigation tab output</p>
+                    <p>Impacted cases, effectiveness badge, fairness deltas, computed group strategy details, plus downloadable mitigated CSV/JSON dataset.</p>
+                  </div>
+                  <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
+                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>Review + Audit output</p>
+                    <p>Review queue with triage actions and immutable audit timeline of upload/analyze/mitigate/review events.</p>
+                  </div>
+                </div>
+              )}
+              {guideSection === 'next' && (
+                <div className="space-y-3">
+                  {[
+                    'Upload dataset and map required columns.',
+                    'Run analysis and inspect violations + disadvantaged groups.',
+                    'Review/acknowledge critical queue items and policy-level blockers.',
+                    'Run mitigation and confirm effectiveness + fairness deltas.',
+                    'Download mitigated dataset and re-validate in your model workflow before deployment.',
+                  ].map((step, i) => (
+                    <div key={i} className="card p-4 flex items-start gap-3" style={{ background: 'var(--surface-container-high)' }}>
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold" style={{ background: 'rgba(196,192,255,0.18)', color: 'var(--primary)' }}>{i + 1}</span>
+                      <p>{step}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card p-4" style={{ background: 'rgba(196,192,255,0.05)', borderColor: 'rgba(196,192,255,0.2)' }}>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs font-bold" style={{ color: 'var(--on-surface)' }}>
+            Need a working demo dataset for fairness + mitigation?
+          </p>
+          <a className="btn-primary text-[10px] py-1.5 px-2.5" href="/mock/fairness_demo_dataset.json" download>
+            <M icon="download" style={{ fontSize: 13 }} />
+            Download Demo JSON
+          </a>
+        </div>
+        <p className="text-[10px] mt-1" style={{ color: 'var(--outline)' }}>
+          This sample is intentionally biased so analysis and mitigation both show visible effects.
+        </p>
       </div>
     </motion.div>
   );
@@ -827,6 +1038,13 @@ function AiReportCard({ datasetId }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');
+  const [geminiConfigured, setGeminiConfigured] = useState(false);
+
+  useEffect(() => {
+    apiGet('/api/fairness/gemini-status')
+      .then(res => setGeminiConfigured(res.configured))
+      .catch(() => setGeminiConfigured(false));
+  }, []);
 
   async function handleGenerate() {
     if (!datasetId) return;
@@ -852,9 +1070,14 @@ function AiReportCard({ datasetId }) {
             <h3 className="text-sm font-bold uppercase tracking-[0.1em] font-headline">AI Fairness Report</h3>
           </div>
           <p className="text-[11px]" style={{ color: 'var(--on-surface-variant)' }}>
-            Generate a human-readable executive summary of this fairness audit using Gemini Flash.
-            {' '}<span style={{ color: 'var(--outline)' }}>Add GEMINI_API_KEY to .env for AI-powered output.</span>
+            Generate a human-readable executive summary of this fairness audit.
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: geminiConfigured ? 'var(--success)' : 'var(--error)', boxShadow: `0 0 4px ${geminiConfigured ? 'var(--success)' : 'var(--error)'}` }} />
+            <span className="text-[9px] uppercase tracking-widest font-bold" style={{ color: geminiConfigured ? 'var(--success)' : 'var(--error)' }}>
+              {geminiConfigured ? 'Using gemini for report generation' : 'Using default report generation'}
+            </span>
+          </div>
         </div>
         <button
           onClick={handleGenerate}
@@ -908,7 +1131,7 @@ function AiReportCard({ datasetId }) {
 /* ═══════════════════════════════════════════════════════════
    TAB: Mitigation Results
    ═══════════════════════════════════════════════════════════ */
-function MitigationTab({ mitigationReport, activeDataset }) {
+function MitigationTab({ mitigationReport, activeDataset, mitigatedDatasetLinks }) {
   if (!activeDataset) {
     return <EmptyState icon="healing" text="Select a dataset from the sidebar to see mitigation results." />;
   }
@@ -918,6 +1141,13 @@ function MitigationTab({ mitigationReport, activeDataset }) {
   }
 
   const mr = mitigationReport;
+  const effectiveness = computeMitigationEffectiveness(mr.deltas || {});
+  const csvDownloadUrl = mitigatedDatasetLinks?.csv_url
+    ? `${API_BASE}${mitigatedDatasetLinks.csv_url}`
+    : null;
+  const jsonDownloadUrl = mitigatedDatasetLinks?.json_url
+    ? `${API_BASE}${mitigatedDatasetLinks.json_url}`
+    : null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
@@ -932,11 +1162,60 @@ function MitigationTab({ mitigationReport, activeDataset }) {
             <p className="text-xs" style={{ color: 'var(--on-surface-variant)' }}>
               Method: {mr.method || 'threshold_adjustment'} • {mr.impacted_count} case{mr.impacted_count !== 1 ? 's' : ''} adjusted
             </p>
+            <div
+              className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest"
+              style={{
+                background:
+                  effectiveness.tone === 'good'
+                    ? 'rgba(52,211,153,0.12)'
+                    : effectiveness.tone === 'bad'
+                      ? 'rgba(255,180,171,0.12)'
+                      : 'rgba(251,191,36,0.12)',
+                border:
+                  effectiveness.tone === 'good'
+                    ? '1px solid rgba(52,211,153,0.35)'
+                    : effectiveness.tone === 'bad'
+                      ? '1px solid rgba(255,180,171,0.35)'
+                      : '1px solid rgba(251,191,36,0.3)',
+                color:
+                  effectiveness.tone === 'good'
+                    ? 'var(--success)'
+                    : effectiveness.tone === 'bad'
+                      ? 'var(--error)'
+                      : 'var(--warning)',
+              }}
+            >
+              <M icon="workspace_premium" style={{ fontSize: 12 }} />
+              Effectiveness: {effectiveness.label}
+            </div>
           </div>
           <div className="ml-auto text-right">
             <p className="text-2xl font-bold font-headline" style={{ color: 'var(--primary)' }}>{mr.impacted_count}</p>
             <p className="text-[9px] uppercase tracking-widest" style={{ color: 'var(--outline)' }}>impacted</p>
           </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {csvDownloadUrl && (
+            <a
+              href={csvDownloadUrl}
+              download
+              className="btn-primary text-xs py-2 px-3"
+            >
+              <M icon="download" style={{ fontSize: 14 }} />
+              Download Mitigated CSV
+            </a>
+          )}
+          {jsonDownloadUrl && (
+            <a
+              href={jsonDownloadUrl}
+              download
+              className="btn-ghost text-xs py-2 px-3"
+              style={{ borderColor: 'rgba(196,192,255,0.22)' }}
+            >
+              <M icon="download" style={{ fontSize: 14 }} />
+              Download Mitigated JSON
+            </a>
+          )}
         </div>
       </div>
 
@@ -1038,17 +1317,40 @@ function DeltaCell({ value }) {
 /* ═══════════════════════════════════════════════════════════
    TAB: Review Queue
    ═══════════════════════════════════════════════════════════ */
-function ReviewTab({ queue, onAction }) {
-  if (!queue.items || queue.items.length === 0) {
+function ReviewTab({ queue, report, onAction }) {
+  const fallbackViolations = report?.report?.violations || [];
+  const hasQueueItems = !!(queue.items && queue.items.length > 0);
+  const itemsToRender = hasQueueItems
+    ? queue.items
+    : fallbackViolations.map((v, i) => ({
+      id: `fallback-${i}`,
+      metric_name: v.metric,
+      group_name: v.group,
+      attribute: v.attribute,
+      actual_value: v.value,
+      expected_range: v.threshold_range || (v.threshold != null ? `threshold: ${v.threshold}` : 'n/a'),
+      severity: v.severity || 'medium',
+      policy_level: v.policy_level || 'warning',
+      status: 'open',
+      reviewer: null,
+      _fallback: true,
+    }));
+
+  if (itemsToRender.length === 0) {
     return <EmptyState icon="checklist" text="No items in the review queue. Run an analysis to detect violations." />;
   }
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-2">
       <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--outline)' }}>
-        {queue.total} violation{queue.total !== 1 ? 's' : ''} flagged for review
+        {hasQueueItems ? queue.total : itemsToRender.length} violation{(hasQueueItems ? queue.total : itemsToRender.length) !== 1 ? 's' : ''} flagged for review
       </p>
-      {queue.items.map(item => {
+      {!hasQueueItems && (
+        <div className="card p-3 text-[10px]" style={{ background: 'rgba(251,191,36,0.08)', borderColor: 'rgba(251,191,36,0.25)', color: 'var(--warning)' }}>
+          Showing violations directly from the latest report because the review queue is currently empty. Re-run analysis to regenerate queue entries.
+        </div>
+      )}
+      {itemsToRender.map(item => {
         const sc = SEVERITY_COLORS[item.severity] || SEVERITY_COLORS.low;
         return (
           <div key={item.id} className="card p-4">
@@ -1069,7 +1371,7 @@ function ReviewTab({ queue, onAction }) {
             <p className="text-[10px] mb-3" style={{ color: 'var(--on-surface-variant)' }}>
               Expected range: {item.expected_range} • Actual: {fmt(item.actual_value)}
             </p>
-            {item.status === 'open' && (
+            {item.status === 'open' && !item._fallback && (
               <div className="flex gap-2">
                 <button onClick={() => onAction(item.id, 'acknowledged')} className="btn-ghost text-[10px] py-1 px-2.5">
                   <M icon="visibility" style={{ fontSize: 13 }} /> Acknowledge

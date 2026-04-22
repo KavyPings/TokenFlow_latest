@@ -12,6 +12,7 @@
 //   POST   /api/fairness/datasets/:id/mitigate       Run bias mitigation
 //   GET    /api/fairness/datasets/:id/mitigation-report  Get mitigation results
 //   GET    /api/fairness/datasets/:id/impacted-cases Get impacted rows
+//   GET    /api/fairness/datasets/:id/mitigated-dataset Download mitigated dataset
 //   GET    /api/fairness/review-queue                Get flagged violations
 //   PATCH  /api/fairness/review-queue/:id            Update review item
 //   GET    /api/fairness/execution-gate              Get gate status
@@ -35,12 +36,18 @@ import {
   getAuditTrail,
   generateReport,
   getLatestReport,
+  addToReviewQueue,
   getReviewQueue,
   updateReviewItem,
 } from '../fairness/services/auditService.js';
 import { evaluateGate, getGateMetrics } from '../fairness/services/executionGateService.js';
-import { runMitigation, getLatestMitigationReport, getImpactedCases } from '../fairness/services/mitigationService.js';
-import { generateFairnessNarrative } from '../services/geminiService.js';
+import {
+  runMitigation,
+  getLatestMitigationReport,
+  getImpactedCases,
+  applyMitigationToRows,
+} from '../fairness/services/mitigationService.js';
+import { generateFairnessNarrative, getGeminiStatus } from '../services/geminiService.js';
 
 const router = Router();
 
@@ -387,6 +394,13 @@ router.get('/datasets/:id/report', async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────
+// GET /gemini-status — Check if Gemini API is configured
+// ───────────────────────────────────────────────────────────
+router.get('/gemini-status', (req, res) => {
+  res.json({ configured: getGeminiStatus().enabled });
+});
+
+// ───────────────────────────────────────────────────────────
 // POST /datasets/:id/ai-report — Generate AI narrative report
 // ───────────────────────────────────────────────────────────
 router.post('/datasets/:id/ai-report', async (req, res) => {
@@ -498,7 +512,14 @@ router.post('/datasets/:id/mitigate', async (req, res) => {
       actor: req.auth?.sub || 'anonymous',
     });
 
-    return res.json({ success: true, mitigation: mitigationReport });
+    return res.json({
+      success: true,
+      mitigation: mitigationReport,
+      mitigated_dataset: {
+        json_url: `/api/fairness/datasets/${req.params.id}/mitigated-dataset?format=json`,
+        csv_url: `/api/fairness/datasets/${req.params.id}/mitigated-dataset?format=csv`,
+      },
+    });
   } catch (err) {
     console.error('[FAIRNESS] Mitigation error:', err);
     return res.status(500).json({ error: 'MITIGATION_FAILED', message: err.message });
@@ -540,18 +561,79 @@ router.get('/datasets/:id/impacted-cases', (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────
+// GET /datasets/:id/mitigated-dataset — Download mitigated rows
+// ───────────────────────────────────────────────────────────
+router.get('/datasets/:id/mitigated-dataset', (req, res) => {
+  try {
+    const db = getDb();
+    const dataset = db.prepare(`
+      SELECT id, name, file_type, config, data_blob
+      FROM fairness_datasets
+      WHERE id = ?
+    `).get(req.params.id);
+
+    if (!dataset) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Dataset not found' });
+    }
+
+    const mitigationReport = getLatestMitigationReport(db, req.params.id);
+    if (!mitigationReport?.config?.group_thresholds) {
+      return res.status(404).json({ error: 'NO_MITIGATION', message: 'No mitigation report found.' });
+    }
+
+    const config = safeJsonParse(dataset.config, {});
+    const rows = safeJsonParse(dataset.data_blob, []);
+    const { adjustedRows } = applyMitigationToRows(rows, config, mitigationReport.config);
+
+    const requestedFormat = String(req.query.format || dataset.file_type || 'json').toLowerCase();
+    const safeBaseName = sanitizeString(dataset.name || 'mitigated_dataset', 80).replace(/\s+/g, '_') || 'mitigated_dataset';
+
+    if (requestedFormat === 'csv') {
+      const csv = toCsv(adjustedRows);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeBaseName}_mitigated.csv"`);
+      return res.send(csv);
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeBaseName}_mitigated.json"`);
+    return res.send(JSON.stringify(adjustedRows, null, 2));
+  } catch (err) {
+    console.error('[FAIRNESS] Mitigated dataset download error:', err);
+    return res.status(500).json({ error: 'DOWNLOAD_FAILED', message: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────
 // GET /review-queue — Get flagged violations
 // ───────────────────────────────────────────────────────────
 router.get('/review-queue', async (req, res) => {
   try {
     const db = getDb();
-    const result = await getReviewQueue(db, {
+    let result = await getReviewQueue(db, {
       dataset_id: req.query.dataset_id,
       status: req.query.status,
       severity: req.query.severity,
       limit: req.query.limit,
       offset: req.query.offset,
     });
+
+    // Backfill queue from latest report if violations exist but queue is empty.
+    if (req.query.dataset_id && result.total === 0) {
+      const latest = await getLatestReport(db, req.query.dataset_id);
+      const violations = latest?.report?.violations || [];
+      const numericViolations = violations.filter((v) => v && v.value !== null && v.value !== undefined);
+      if (latest?.id && numericViolations.length > 0) {
+        await addToReviewQueue(db, req.query.dataset_id, latest.id, numericViolations);
+        result = await getReviewQueue(db, {
+          dataset_id: req.query.dataset_id,
+          status: req.query.status,
+          severity: req.query.severity,
+          limit: req.query.limit,
+          offset: req.query.offset,
+        });
+      }
+    }
 
     return res.json(result);
   } catch (err) {
@@ -649,6 +731,25 @@ function extractRowsFromJsonPayload(payload) {
 
   const firstArrayValue = Object.values(payload).find((value) => Array.isArray(value));
   return firstArrayValue || null;
+}
+
+function toCsv(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return '';
+  const headers = Object.keys(rows[0]);
+  const escapeCell = (value) => {
+    if (value === null || value === undefined) return '';
+    const str = String(value);
+    if (/[",\n\r]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const lines = [headers.join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((h) => escapeCell(row[h])).join(','));
+  }
+  return lines.join('\n');
 }
 
 export default router;
