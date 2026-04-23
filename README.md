@@ -129,9 +129,9 @@ A flaw in Google Cloud's AI system allowed agents to act as "double agents":
 | Page | Purpose |
 |---|---|
 | **Home (Landing)** | Explains the incident, how TokenFlow works, product guide |
-| **Run** | Multi-tab runner: Launch scenarios, watch the Token Chain, and run Testbench |
+| **Workflow Management** | Multi-tab workflow area: Mock Workflows, Uploaded Workflows, Token Chain, Testbench, and Workflow Score |
 | **Monitor** | Overview dashboard plus Security review log for flagged workflows |
-| **Governance** | Fairness auditing and Score compliance views in one place |
+| **Dataset Management** | Fairness auditing and dataset governance score in one place |
 | **About** | Side-by-side architecture comparison |
 
 ## Run Locally

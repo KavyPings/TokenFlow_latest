@@ -13,6 +13,7 @@ import { policyEngine } from './policyEngine.js';
 import { readCloudObject, callInternalApi, writeCloudObject, sendDecisionEmail } from '../services/agentService.js';
 import { broadcast } from '../websocket/wsServer.js';
 import { evaluateGate, FairnessGateBlockedError } from '../fairness/services/executionGateService.js';
+import { orchestrationSupervisor } from '../services/orchestrationSupervisor.js';
 
 const AGENT_ID = 'agent-cloud-worker';
 
@@ -123,6 +124,15 @@ class WorkflowRunner {
       return;
     }
 
+    const beforeMintEvaluation = orchestrationSupervisor.evaluate({
+      workflowId,
+      phase: 'before_token_mint',
+      context: { stepIndex, actionType },
+    });
+    if (await this._applySupervisorDecision(workflowId, beforeMintEvaluation, stepIndex)) {
+      return;
+    }
+
     // Get step permissions from policy engine
     const stepPermissions = policyEngine.getStepPermissions(actionType);
     const stepDef = stepDefinitions[stepIndex];
@@ -201,6 +211,15 @@ class WorkflowRunner {
 
     await this._delay(stepDelay);
 
+    const beforeExecuteEvaluation = orchestrationSupervisor.evaluate({
+      workflowId,
+      phase: 'before_step_execute',
+      context: { stepIndex, actionType, tokenId: token.id },
+    });
+    if (await this._applySupervisorDecision(workflowId, beforeExecuteEvaluation, stepIndex)) {
+      return;
+    }
+
     // Execute the step action
     try {
       const result = await this._executeAction(actionType, taskData, workflowId, token.id, stepIndex);
@@ -223,6 +242,17 @@ class WorkflowRunner {
             fairness_flags: flags,
             taskData: { id: taskData.id, name: taskData.name },
           });
+          const evaluation = orchestrationSupervisor.evaluate({
+            workflowId,
+            phase: 'post_flagged_event',
+            signals: {
+              fairness_gate_violation: true,
+            },
+            context: { stepIndex, actionType },
+          });
+          if (await this._applySupervisorDecision(workflowId, evaluation, stepIndex)) {
+            return;
+          }
           this._updateWorkflow(workflowId, 'paused', stepIndex);
           return;
         }
@@ -299,6 +329,22 @@ class WorkflowRunner {
         taskData: { id: taskData.id, name: taskData.name },
       });
 
+      const evaluation = orchestrationSupervisor.evaluate({
+        workflowId,
+        phase: 'post_flagged_event',
+        signals: {
+          unauthorized_service_attempt: true,
+        },
+        context: {
+          stepIndex,
+          attempted_action: maliciousStep.action,
+          attempted_service: maliciousStep.service,
+        },
+      });
+      if (await this._applySupervisorDecision(workflowId, evaluation, stepIndex)) {
+        return;
+      }
+
       this._updateWorkflow(workflowId, 'paused', stepIndex);
       return;
     }
@@ -318,6 +364,18 @@ class WorkflowRunner {
         tokenEngine.consumeToken(burnedToken.id, { replay_attempt: true });
       } catch (err) {
         console.log(`[WORKFLOW] 🛑 REPLAY BLOCKED: ${err.message}`);
+        const evaluation = orchestrationSupervisor.evaluate({
+          workflowId,
+          phase: 'post_flagged_event',
+          signals: {
+            replay_token_usage: true,
+          },
+          context: { stepIndex, replayRejected: true },
+        });
+        const halted = await this._applySupervisorDecision(workflowId, evaluation, stepIndex);
+        if (halted) {
+          return;
+        }
         // Replay was blocked — continue with normal flow
       }
       await this._delay(stepDelay);
@@ -361,6 +419,22 @@ class WorkflowRunner {
         attempted_resource: escalationStep.resource,
         taskData: { id: taskData.id, name: taskData.name },
       });
+
+      const evaluation = orchestrationSupervisor.evaluate({
+        workflowId,
+        phase: 'post_flagged_event',
+        signals: {
+          escalation_verb_mismatch: true,
+        },
+        context: {
+          stepIndex,
+          attempted_action: escalationStep.action,
+          attempted_resource: escalationStep.resource,
+        },
+      });
+      if (await this._applySupervisorDecision(workflowId, evaluation, stepIndex)) {
+        return true;
+      }
 
       this._updateWorkflow(workflowId, 'paused', stepIndex);
       return true;
@@ -586,6 +660,24 @@ class WorkflowRunner {
     } catch {
       // step_context column may not exist in older schema — safe to ignore
     }
+  }
+
+  async _applySupervisorDecision(workflowId, evaluation, stepIndex) {
+    if (!evaluation || evaluation.action === 'allow') return false;
+
+    if (evaluation.action === 'kill') {
+      tokenEngine.logWorkflowEvent(workflowId, 'SUPERVISOR_KILLED', evaluation, 'supervisor');
+      await this.killWorkflow(workflowId);
+      return true;
+    }
+
+    if (evaluation.action === 'pause') {
+      tokenEngine.logWorkflowEvent(workflowId, 'SUPERVISOR_PAUSED', evaluation, 'supervisor');
+      this._updateWorkflow(workflowId, 'paused', stepIndex);
+      return true;
+    }
+
+    return false;
   }
 
   // ─── Query helpers ────────────────────────────────────────

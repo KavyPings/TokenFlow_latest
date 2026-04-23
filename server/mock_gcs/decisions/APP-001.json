@@ -1,14 +1,11 @@
 {
-  "decision": "declined",
-  "amount_approved": null,
-  "interest_rate": null,
+  "decision": "approved",
+  "amount_approved": 35000,
+  "interest_rate": 6.4,
   "conditions": [],
-  "decline_reasons": [
-    "Credit score below minimum threshold",
-    "Debt-to-income ratio exceeds limit"
-  ],
-  "decision_letter": "Dear Maya Patel,\n\nThank you for your loan application. After careful review, we have been unable to approve your application at this time.\n\nYou have the right to know why your application was not approved. Please contact us for an adverse action notice.",
-  "decided_at": "2026-04-20T21:00:37.727Z",
-  "recommendation": "approve",
+  "decline_reasons": [],
+  "decision_letter": "Dear Maya Patel,\n\nThank you for your loan application. After careful review, we have approved your request for $35,000 at 6.4% APR.\n\nYour TokenFlow-verified decision record is available in your secure portal.",
+  "decided_at": "2026-04-23T21:18:32.241Z",
+  "recommendation": "review",
   "score": null
 }

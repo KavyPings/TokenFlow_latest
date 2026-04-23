@@ -10,9 +10,13 @@ import TestbenchPage from './pages/TestbenchPage.jsx';
 import IncidentPage from './pages/IncidentPage.jsx';
 import FairnessPage from './pages/FairnessPage.jsx';
 import ScoringPage from './pages/ScoringPage.jsx';
+import WorkflowScorePage from './pages/WorkflowScorePage.jsx';
+import RedTeamPage from './pages/RedTeamPage.jsx';
+import ReplayPage from './pages/ReplayPage.jsx';
 import MonitorPage from './pages/MonitorPage.jsx';
 import GovernancePage from './pages/GovernancePage.jsx';
 import OnboardingWizard from './components/OnboardingWizard.jsx';
+import InstructionsDialog from './components/InstructionsDialog.jsx';
 
 /* ─── Interactive Particle Canvas ─── */
 function ParticleCanvas() {
@@ -90,9 +94,9 @@ const STEP_META = {
 // Nav tabs
 const NAV_ITEMS = [
   { id: 'home', label: 'Home' },
-  { id: 'run', label: 'Run', badgeKey: 'running' },
+  { id: 'run', label: 'Workflow Management', badgeKey: 'running' },
   { id: 'monitor', label: 'Monitor', badgeKey: 'alerts' },
-  { id: 'governance', label: 'Governance' },
+  { id: 'governance', label: 'Dataset Management' },
   { id: 'about', label: 'About' },
 ];
 
@@ -365,6 +369,14 @@ export default function App() {
     }, 400);
   }
 
+  function handleOpenReplay(workflowId) {
+    if (workflowId) {
+      setSelectedWorkflowId(workflowId);
+    }
+    navigateToPage('workflow');
+    setWorkflowSubTab('replay');
+  }
+
   const alertCount = reviewQueue.length;
   const runningCount = workflows.filter((w) => w.status === 'running' || w.status === 'paused').length;
   const showRefreshButton = socketState === 'offline' || socketState === 'degraded';
@@ -503,6 +515,7 @@ export default function App() {
                 busyAction={busyAction}
                 setPage={navigateToPage}
                 onRunUploadedWorkflow={handleUploadedWorkflowRun}
+                onOpenReplay={handleOpenReplay}
                 activeTab={workflowSubTab}
                 setActiveTab={setWorkflowSubTab}
               />
@@ -571,21 +584,42 @@ function WorkflowControlPage({
   currentWorkflow, currentChainWorkflow,
   selectedWorkflowId, setSelectedWorkflowId,
   tasks, selectedTask, setSelectedTask,
-  onStart, onKill, onClearWorkflows, busyAction, setPage, onRunUploadedWorkflow,
+  onStart, onKill, onClearWorkflows, busyAction, setPage, onRunUploadedWorkflow, onOpenReplay,
   activeTab, setActiveTab,
 }) {
+  const [showInstructions, setShowInstructions] = useState(false);
+
   const tabs = [
-    { id: 'launch', label: 'Launch', msym: 'play_arrow' },
+    { id: 'launch', label: 'Mock Workflows', msym: 'play_arrow' },
+    { id: 'uploads', label: 'Uploaded Workflows', msym: 'upload_file' },
     { id: 'chain', label: 'Token Chain', msym: 'token' },
     { id: 'testbench', label: 'Testbench', msym: 'science' },
+    { id: 'redteam', label: 'Red-Team', msym: 'shield' },
+    { id: 'replay', label: 'Replay', msym: 'history' },
+    { id: 'workflowScore', label: 'Workflow Score', msym: 'verified' },
   ];
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="flex gap-2 mb-6">
+      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--secondary)' }}>Scope: Workflow Information</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--on-surface-variant)' }}>
+            Workflow Management controls workflow execution, token chains, and workflow-only scoring.
+          </p>
+        </div>
+        <button className="btn-ghost" style={{ fontSize: '0.7rem' }} onClick={() => setShowInstructions(true)}>
+          <M icon="help" style={{ fontSize: 14 }} /> How to use
+        </button>
+      </div>
+
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-[0.1em] transition-all flex items-center gap-1.5 ${activeTab === t.id ? 'btn-primary' : 'btn-ghost'}`}
-            style={activeTab !== t.id ? { padding: '0.5rem 1.25rem' } : {}}>
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-[0.1em] transition-all flex items-center gap-1.5 flex-shrink-0 ${activeTab === t.id ? 'btn-primary' : 'btn-ghost'}`}
+            style={activeTab !== t.id ? { padding: '0.5rem 1.25rem' } : {}}
+          >
             <M icon={t.msym} style={{ fontSize: 14 }} />{t.label}
           </button>
         ))}
@@ -594,8 +628,12 @@ function WorkflowControlPage({
         {activeTab === 'launch' && (
           <motion.div key="launch" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <LaunchTab tasks={tasks} selectedTask={selectedTask} setSelectedTask={setSelectedTask}
-              onStart={onStart} busyAction={busyAction}
-              onRunUploadedWorkflow={onRunUploadedWorkflow} setPage={setPage} />
+              onStart={onStart} busyAction={busyAction} />
+          </motion.div>
+        )}
+        {activeTab === 'uploads' && (
+          <motion.div key="uploads" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <UploadedWorkflowsTab onRunUploadedWorkflow={onRunUploadedWorkflow} />
           </motion.div>
         )}
         {activeTab === 'chain' && (
@@ -611,7 +649,58 @@ function WorkflowControlPage({
             <TestbenchPage />
           </motion.div>
         )}
+        {activeTab === 'redteam' && (
+          <motion.div key="redteam" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <RedTeamPage onOpenReplay={onOpenReplay} />
+          </motion.div>
+        )}
+        {activeTab === 'replay' && (
+          <motion.div key="replay" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <ReplayPage
+              workflowId={selectedWorkflowId}
+              onSelectWorkflow={setSelectedWorkflowId}
+              workflows={workflows}
+            />
+          </motion.div>
+        )}
+        {activeTab === 'workflowScore' && (
+          <motion.div key="workflow-score" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <WorkflowScorePage />
+          </motion.div>
+        )}
       </AnimatePresence>
+
+      <InstructionsDialog
+        open={showInstructions}
+        onClose={() => setShowInstructions(false)}
+        title="Workflow Management"
+        subtitle="Workflow Management contains workflow-only operations and scoring."
+        sections={[
+          {
+            title: 'Mock Workflows',
+            steps: [
+              'Choose a built-in workflow scenario and start secure execution.',
+              'This is the fastest path to generate token chain and score evidence.',
+            ],
+          },
+          {
+            title: 'Uploaded Workflows',
+            steps: [
+              'Upload a JSON workflow definition.',
+              'Run the uploaded workflow to execute through the exact same token engine.',
+              'Inspect results in Token Chain exactly like mock workflows.',
+            ],
+          },
+          {
+            title: 'Token Chain, Testbench, Workflow Score',
+            steps: [
+              'Token Chain shows per-workflow token lifecycle and audit evidence.',
+              'Testbench validates invariants and stress-tests controls.',
+              'Workflow Score summarizes workflow-only posture from chain, intercept, and tests.',
+            ],
+          },
+        ]}
+      />
     </motion.div>
   );
 }
@@ -640,7 +729,7 @@ function DashboardPage({
           <span className="text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: 'var(--primary)' }}>Mission Control</span>
         </div>
         <h1 className="font-headline text-3xl font-bold tracking-tight mb-2" style={{ color: 'var(--on-surface)' }}>System Overview</h1>
-        <p className="text-sm" style={{ color: 'var(--on-surface-variant)' }}>Live status across Run, Monitor, and Governance.</p>
+        <p className="text-sm" style={{ color: 'var(--on-surface-variant)' }}>Live status across Workflow Management, Monitor, and Dataset Management.</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -651,12 +740,12 @@ function DashboardPage({
       </div>
 
       <div className="grid md:grid-cols-3 gap-4 mb-6">
-        {/* Workflow Control panel */}
+        {/* Workflow Management panel */}
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-lg" style={{ background: 'rgba(196,192,255,0.12)' }}><M icon="hub" style={{ fontSize: 16, color: 'var(--primary)' }} /></div>
-              <p className="text-xs font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--primary)' }}>Workflow Control</p>
+              <p className="text-xs font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--primary)' }}>Workflow Management</p>
             </div>
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: runningWf.length ? 'rgba(52,211,153,0.12)' : 'rgba(70,69,85,0.15)', color: runningWf.length ? 'var(--success)' : 'var(--outline)' }}>
               {runningWf.length ? `${runningWf.length} active` : 'idle'}
@@ -769,10 +858,10 @@ function DashboardPage({
         <div className="flex items-center gap-2 mb-5"><M icon="menu_book" style={{ color: 'var(--primary)', fontSize: 18 }} /><h3 className="text-sm font-bold uppercase tracking-[0.15em]">How to Use TokenFlow</h3></div>
         <div className="grid md:grid-cols-2 gap-4">
           {[
-            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(196,192,255,0.08)', title: 'Run', steps: ['Open Run in the top nav', 'Select a scenario in Launch', 'Click Start Secure Execution', 'You\'ll move to Token Chain automatically', 'Use Testbench for stress-testing'] },
-            { icon: 'balance', color: 'var(--secondary)', bg: 'rgba(20,209,255,0.08)', title: 'Governance', steps: ['Open Governance', 'Switch to Fairness', 'Upload a CSV dataset', 'Run analysis and review violations', 'Generate AI report when GEMINI_API_KEY is set'] },
+            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(196,192,255,0.08)', title: 'Workflow Management', steps: ['Open Workflow Management in the top nav', 'Use Mock Workflows for built-in scenarios', 'Use Uploaded Workflows for your JSON definitions', 'Track results in Token Chain', 'Use Workflow Score for workflow-only posture'] },
+            { icon: 'balance', color: 'var(--secondary)', bg: 'rgba(20,209,255,0.08)', title: 'Dataset Management', steps: ['Open Dataset Management', 'Switch to Fairness', 'Upload a CSV dataset', 'Run analysis and review violations', 'Use Dataset Score for fairness testing + mitigation posture'] },
             { icon: 'shield', color: 'var(--error)', bg: 'rgba(255,180,171,0.08)', title: 'Monitor', steps: ['Open Monitor and switch to Security', 'Review flagged workflows', 'Resume or revoke paused workflows', 'Credentials stay isolated in Vault', 'Use Reset Demo to clear state'] },
-            { icon: 'verified', color: 'var(--success)', bg: 'rgba(52,211,153,0.08)', title: 'Governance Score', steps: ['Run a workflow first', 'Open Governance and switch to Score', 'Review the compliance gauge', 'Inspect the checklist and breakdown'] },
+            { icon: 'verified', color: 'var(--success)', bg: 'rgba(52,211,153,0.08)', title: 'Dataset Score', steps: ['Open Dataset Management and switch to Score', 'Run fairness analysis from Fairness to create score evidence', 'Review the compliance gauge', 'Inspect the checklist and breakdown'] },
           ].map((item) => (
             <div key={item.title} className="rounded-2xl p-4" style={{ background: item.bg, border: `1px solid ${item.color}25` }}>
               <div className="flex items-center gap-2 mb-3"><M icon={item.icon} style={{ fontSize: 15, color: item.color }} /><h4 className="text-xs font-bold uppercase tracking-[0.12em]" style={{ color: item.color }}>{item.title}</h4></div>
@@ -966,46 +1055,7 @@ function ChainTab({ chainNodes, currentWorkflow, workflows, selectedWorkflowId, 
 }
 
 /* ─── Dashboard: Launch Tab ─── */
-function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction, onRunUploadedWorkflow, setPage }) {
-  const [uploadedWfId, setUploadedWfId] = useState(null);
-  const [uploadedWfName, setUploadedWfName] = useState('');
-  const [uploadBusy, setUploadBusy] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const fileInputRef = useRef(null);
-
-  async function handleFileUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadBusy(true);
-    setUploadError('');
-    try {
-      const text = await file.text();
-      const json = JSON.parse(text);
-      const fd = new FormData();
-      fd.append('workflow', file);
-      const res = await fetch('/api/workflows/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message || 'Upload failed');
-      setUploadedWfId(data.uploadedWorkflowId || data.id);
-      setUploadedWfName(json?.name || file.name);
-    } catch (err) {
-      setUploadError(err.message);
-    } finally {
-      setUploadBusy(false);
-    }
-  }
-
-  async function handleRunUploaded() {
-    if (!uploadedWfId || !onRunUploadedWorkflow) return;
-    setUploadBusy(true);
-    try {
-      await onRunUploadedWorkflow(uploadedWfId);
-    } catch (err) {
-      setUploadError(err.message);
-    } finally {
-      setUploadBusy(false);
-    }
-  }
+function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }) {
   const sel = tasks.find(t => t.id === selectedTask);
   const outcomeTone = {
     completed: { label: 'Expected: Complete', color: 'var(--success)', bg: 'rgba(52,211,153,0.1)' },
@@ -1023,8 +1073,8 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction, 
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-container))', boxShadow: '0 0 30px rgba(196,192,255,0.2)' }}>
           <M icon="play_arrow" style={{ fontSize: 32, color: 'var(--on-primary)' }} />
         </div>
-        <h2 className="text-2xl font-bold font-headline tracking-tight">Launch Agent Task</h2>
-        <p className="text-sm mt-2" style={{ color: 'var(--on-surface-variant)' }}>Select a scenario and execute a secure, token-gated agent workflow</p>
+        <h2 className="text-2xl font-bold font-headline tracking-tight">Mock Workflows</h2>
+        <p className="text-sm mt-2" style={{ color: 'var(--on-surface-variant)' }}>Select a built-in scenario and execute a secure, token-gated workflow</p>
       </div>
 
       <div className="space-y-3 mb-6">
@@ -1084,24 +1134,64 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction, 
           {sel.expected_status === 'aborted' && 'This scenario will terminate early — the kill-switch control revokes the chain.'}
         </p>
       )}
+    </div>
+  );
+}
 
-      {/* Upload custom workflow divider */}
-      <div className="flex items-center gap-3 my-8">
-        <div style={{ flex: 1, height: 1, background: 'rgba(70,69,85,0.2)' }} />
-        <span className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--outline)' }}>or upload custom</span>
-        <div style={{ flex: 1, height: 1, background: 'rgba(70,69,85,0.2)' }} />
+function UploadedWorkflowsTab({ onRunUploadedWorkflow }) {
+  const [uploadedWfId, setUploadedWfId] = useState(null);
+  const [uploadedWfName, setUploadedWfName] = useState('');
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef(null);
+
+  async function handleFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadBusy(true);
+    setUploadError('');
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const fd = new FormData();
+      fd.append('workflow', file);
+      const res = await fetch('/api/workflows/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.message || 'Upload failed');
+      setUploadedWfId(data.uploadedWorkflowId || data.id);
+      setUploadedWfName(json?.name || file.name);
+    } catch (err) {
+      setUploadError(err.message);
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+
+  async function handleRunUploaded() {
+    if (!uploadedWfId || !onRunUploadedWorkflow) return;
+    setUploadBusy(true);
+    try {
+      await onRunUploadedWorkflow(uploadedWfId);
+    } catch (err) {
+      setUploadError(err.message);
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="text-center mb-8">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, var(--secondary), var(--secondary-container))', boxShadow: '0 0 30px rgba(20,209,255,0.2)' }}>
+          <M icon="upload_file" style={{ fontSize: 30, color: 'var(--on-secondary)' }} />
+        </div>
+        <h2 className="text-2xl font-bold font-headline tracking-tight">Uploaded Workflows</h2>
+        <p className="text-sm mt-2" style={{ color: 'var(--on-surface-variant)' }}>
+          Upload JSON workflows and run them through the exact same token chain engine as mock workflows.
+        </p>
       </div>
 
       <div className="card p-5">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="p-2 rounded-xl" style={{ background: 'rgba(196,192,255,0.1)' }}>
-            <M icon="upload_file" style={{ fontSize: 20, color: 'var(--primary)' }} />
-          </div>
-          <div>
-            <h4 className="text-sm font-bold font-headline">Upload Custom Workflow</h4>
-            <p className="text-[10px]" style={{ color: 'var(--on-surface-variant)' }}>JSON workflow definition. Runs through the same token-gating engine.</p>
-          </div>
-        </div>
         <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileUpload} style={{ display: 'none' }} />
         {!uploadedWfId ? (
           <button
@@ -1443,7 +1533,7 @@ function SecurityPage({ currentReview, reviewQueue, workflows, selectedWorkflowI
           </div>
           <h4 className="text-base font-bold font-headline mb-2">Security Audit Log</h4>
           <p className="text-sm max-w-md" style={{ color: 'var(--on-surface-variant)' }}>
-            Launch a workflow from Run → Launch to populate this audit trail.
+            Launch a workflow from Workflow Management → Mock Workflows to populate this audit trail.
           </p>
         </div>
       )}

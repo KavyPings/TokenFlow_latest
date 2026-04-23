@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api.js';
+import InstructionsDialog from '../components/InstructionsDialog.jsx';
 
 /* ─── Material Symbol shortcut ─── */
 const M = ({ icon, className = '', style }) => (
@@ -142,16 +143,21 @@ export default function ScoringPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [overview, testResults, gateStatus] = await Promise.all([
-        api('/api/dashboard/overview'),
-        api('/api/testbench/results?limit=100').catch(() => ({ results: [] })),
-        api('/api/fairness/execution-gate').catch(() => ({ gate: { allowed: true, decision: 'ALLOW' } })),
+      setError(null);
+      const [datasetsResult, reviewQueue, gateStatus] = await Promise.all([
+        api('/api/fairness/datasets').catch(() => ({ datasets: [] })),
+        api('/api/fairness/review-queue?limit=200').catch(() => ({ items: [], total: 0 })),
+        api('/api/fairness/execution-gate').catch(() => ({
+          gate: { allowed: true, decision: 'ALLOW', mode: 'shadow' },
+          metrics: { total_evaluations: 0, blocked_count: 0, allowed_count: 0 },
+        })),
       ]);
-      setData({ overview, testResults, gateStatus });
+      setData({ datasetsResult, reviewQueue, gateStatus });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -170,7 +176,7 @@ export default function ScoringPage() {
           borderTopColor: 'var(--primary)',
           animation: 'spin 0.8s linear infinite' 
         }} />
-        <p style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>Computing compliance score…</p>
+        <p style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>Computing dataset score...</p>
       </div>
     );
   }
@@ -179,71 +185,61 @@ export default function ScoringPage() {
     return (
       <div style={{ padding: 32, textAlign: 'center' }}>
         <M icon="error" style={{ fontSize: 48, color: 'var(--error)' }} />
-        <p style={{ color: 'var(--error)', marginTop: 12 }}>Failed to load score data: {error}</p>
+        <p style={{ color: 'var(--error)', marginTop: 12 }}>Failed to load dataset score data: {error}</p>
         <button className="btn-primary" style={{ marginTop: 16 }} onClick={loadData}>Retry</button>
       </div>
     );
   }
 
-  // ── Compute score components ──────────────────────────────
-  const workflows = data?.overview?.workflows || [];
-  const reviewQueue = data?.overview?.reviewQueue || [];
-  const testRuns = data?.testResults?.results || [];
+  // ── Compute dataset score components ──────────────────────
+  const datasets = data?.datasetsResult?.datasets || [];
+  const reviewItems = data?.reviewQueue?.items || [];
   const gate = data?.gateStatus?.gate || {};
+  const gateMetrics = data?.gateStatus?.metrics || {};
 
-  const totalWorkflows = workflows.length;
-  const completedWorkflows = workflows.filter(w => w.status === 'completed').length;
-  const abortedWorkflows = workflows.filter(w => w.status === 'aborted' || w.status === 'killed').length;
-  const flaggedWorkflows = reviewQueue.length;
+  const totalDatasets = datasets.length;
+  const analyzedDatasets = datasets.filter((d) => d.status === 'analyzed' || d.status === 'mitigated').length;
+  const mitigatedDatasets = datasets.filter((d) => d.status === 'mitigated').length;
 
-  // Audit completeness — check if all completed workflows have audit events
-  const auditedWorkflows = workflows.filter(w => (w.audit_event_count || 0) > 0).length;
-  const auditCompleteness = totalWorkflows > 0 ? Math.round((auditedWorkflows / totalWorkflows) * 100) : 100;
+  const openStatuses = ['open', 'acknowledged'];
+  const openItems = reviewItems.filter((item) => openStatuses.includes(item.status));
+  const highOpenItems = openItems.filter((item) => item.severity === 'high');
 
-  // Flag ratio — lower is better; score inversely
-  const flagRatio = totalWorkflows > 0 ? flaggedWorkflows / totalWorkflows : 0;
-  const flagScore = Math.round(Math.max(0, 100 - flagRatio * 200));
+  const analysisScore = totalDatasets > 0 ? Math.round((analyzedDatasets / totalDatasets) * 100) : 100;
+  const mitigationScore = analyzedDatasets > 0
+    ? Math.round((mitigatedDatasets / analyzedDatasets) * 100)
+    : (totalDatasets > 0 ? 0 : 100);
+  const queueScore = Math.round(Math.max(0, 100 - (highOpenItems.length * 20) - (openItems.length * 5)));
+  const fairnessGateScore = gate.allowed ? 100 : 30;
 
-  // Testbench pass rate
-  const passedRuns = testRuns.filter(r => r.status === 'passed').length;
-  const testPassRate = testRuns.length > 0 ? Math.round((passedRuns / testRuns.length) * 100) : 0;
-  const testScore = testRuns.length > 0 ? testPassRate : 50; // neutral if no runs yet
-
-  // Fairness gate
-  const fairnessScore = gate.allowed ? 100 : 30;
-
-  // Weighted composite score
-  const weights = { audit: 0.25, flag: 0.30, tests: 0.30, fairness: 0.15 };
+  const weights = { analysis: 0.30, mitigation: 0.25, queue: 0.25, gate: 0.20 };
   const compositeScore = Math.round(
-    auditCompleteness * weights.audit +
-    flagScore * weights.flag +
-    testScore * weights.tests +
-    fairnessScore * weights.fairness
+    analysisScore * weights.analysis +
+    mitigationScore * weights.mitigation +
+    queueScore * weights.queue +
+    fairnessGateScore * weights.gate
   );
 
-  // Checklist items 
   const checklist = [
     {
-      label: 'WebSocket live connection',
-      passed: true,
-      detail: 'Real-time agent monitoring active',
+      label: 'Dataset inventory present',
+      passed: totalDatasets > 0,
+      detail: totalDatasets > 0 ? `${totalDatasets} dataset(s) available for governance` : 'Upload a dataset to begin fairness governance',
     },
     {
-      label: 'Token audit log maintained',
-      passed: auditCompleteness >= 80,
-      detail: `${auditedWorkflows} of ${totalWorkflows} workflows have audit events (${auditCompleteness}%)`,
+      label: 'Fairness testing coverage',
+      passed: analysisScore >= 70,
+      detail: `${analyzedDatasets}/${totalDatasets} datasets analyzed (${analysisScore}%)`,
     },
     {
-      label: 'Security intercepts functioning',
-      passed: abortedWorkflows > 0 || completedWorkflows > 0,
-      detail: `${abortedWorkflows} workflows blocked, ${completedWorkflows} completed correctly`,
+      label: 'Mitigation adoption',
+      passed: mitigationScore >= 50 || analyzedDatasets === 0,
+      detail: `${mitigatedDatasets}/${analyzedDatasets} analyzed datasets mitigated (${mitigationScore}%)`,
     },
     {
-      label: 'Testbench invariants passing',
-      passed: testScore >= 70,
-      detail: testRuns.length > 0
-        ? `${passedRuns}/${testRuns.length} scenarios passed (${testScore}%)`
-        : 'No testbench runs yet — run scenarios to validate',
+      label: 'High-severity queue control',
+      passed: highOpenItems.length === 0,
+      detail: `${highOpenItems.length} unresolved high-severity item(s)`,
     },
     {
       label: 'Fairness gate operational',
@@ -251,14 +247,9 @@ export default function ScoringPage() {
       detail: `Gate mode: ${gate.mode || 'shadow'} — ${gate.message || 'No fairness violations detected'}`,
     },
     {
-      label: 'Vault credentials isolated',
-      passed: (data?.overview?.credentials || []).length > 0,
-      detail: `${(data?.overview?.credentials || []).length} credentials stored — agents never receive raw secrets`,
-    },
-    {
-      label: 'Token scope enforcement active',
-      passed: true,
-      detail: 'Single-use capability tokens enforced on all agent actions',
+      label: 'Review queue manageable',
+      passed: openItems.length <= 5,
+      detail: `${openItems.length} open/acknowledged queue item(s)`,
     },
   ];
 
@@ -272,16 +263,21 @@ export default function ScoringPage() {
       style={{ maxWidth: 1100, margin: '0 auto', padding: '0 0 40px' }}
     >
       {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--secondary)', margin: '0 0 6px' }}>
-          Compliance Score
-        </p>
-        <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px', fontFamily: 'var(--font-headline)' }}>
-          Security &amp; Fairness Scorecard
-        </h1>
-        <p style={{ fontSize: 13, color: 'var(--on-surface-variant)', margin: 0 }}>
-          Live compliance score computed from audit completeness, intercept rate, invariant pass rate, and fairness gate status.
-        </p>
+      <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--secondary)', margin: '0 0 6px' }}>
+            Dataset Score
+          </p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px', fontFamily: 'var(--font-headline)' }}>
+            Fairness Testing &amp; Mitigation Scorecard
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--on-surface-variant)', margin: 0 }}>
+            Dataset-only governance score based on fairness testing coverage, mitigation adoption, review queue health, and gate status.
+          </p>
+        </div>
+        <button className="btn-ghost" style={{ fontSize: 11 }} onClick={() => setShowInstructions(true)}>
+          <M icon="help" style={{ fontSize: 14 }} /> How to use
+        </button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20 }}>
@@ -317,40 +313,40 @@ export default function ScoringPage() {
               Score Breakdown
             </h3>
             <ScoreRow
-              label="Audit Completeness"
-              value={auditCompleteness}
+              label="Fairness Testing Coverage"
+              value={analysisScore}
               max={100}
               unit="%"
-              color={auditCompleteness >= 80 ? 'success' : 'warning'}
-              msym="receipt_long"
-              detail={`${auditedWorkflows}/${totalWorkflows} workflows have full audit trails (weight: 25%)`}
+              color={analysisScore >= 70 ? 'success' : 'warning'}
+              msym="dataset"
+              detail={`${analyzedDatasets}/${totalDatasets} datasets analyzed (weight: 30%)`}
             />
             <ScoreRow
-              label="Security Intercept Quality"
-              value={flagScore}
+              label="Mitigation Coverage"
+              value={mitigationScore}
               max={100}
               unit="%"
-              color={flagScore >= 70 ? 'success' : flagScore >= 40 ? 'warning' : 'error'}
-              msym="shield"
-              detail={`${flaggedWorkflows} flagged workflows — lower flag rate = higher score (weight: 30%)`}
+              color={mitigationScore >= 60 ? 'success' : mitigationScore >= 30 ? 'warning' : 'error'}
+              msym="tune"
+              detail={`${mitigatedDatasets}/${analyzedDatasets} analyzed datasets mitigated (weight: 25%)`}
             />
             <ScoreRow
-              label="Testbench Pass Rate"
-              value={testRuns.length > 0 ? passedRuns : 0}
-              max={testRuns.length || 0}
-              unit=""
-              color={testScore >= 70 ? 'success' : testScore >= 40 ? 'warning' : 'error'}
-              msym="science"
-              detail={testRuns.length > 0 ? `${passedRuns}/${testRuns.length} scenarios passed (weight: 30%)` : 'No runs yet — go to Testbench to run scenarios (weight: 30%)'}
+              label="Review Queue Health"
+              value={queueScore}
+              max={100}
+              unit="%"
+              color={queueScore >= 70 ? 'success' : queueScore >= 40 ? 'warning' : 'error'}
+              msym="rule"
+              detail={`${openItems.length} open fairness item(s), ${highOpenItems.length} high severity (weight: 25%)`}
             />
             <ScoreRow
               label="Fairness Gate"
-              value={fairnessScore}
+              value={fairnessGateScore}
               max={100}
               unit="%"
-              color={fairnessScore === 100 ? 'success' : 'error'}
+              color={fairnessGateScore === 100 ? 'success' : 'error'}
               msym="balance"
-              detail={`Gate: ${gate.decision || 'ALLOW'} in ${gate.mode || 'shadow'} mode (weight: 15%)`}
+              detail={`Gate: ${gate.decision || 'ALLOW'} in ${gate.mode || 'shadow'} mode (weight: 20%)`}
             />
           </div>
 
@@ -369,36 +365,55 @@ export default function ScoringPage() {
       {/* Bottom info */}
       <div className="card" style={{ padding: 20, marginTop: 20, display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Total Workflows</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-headline)' }}>{totalWorkflows}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Datasets</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-headline)' }}>{totalDatasets}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Blocked Attacks</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--success)', fontFamily: 'var(--font-headline)' }}>{abortedWorkflows}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Analyzed</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--success)', fontFamily: 'var(--font-headline)' }}>{analyzedDatasets}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Testbench Runs</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--secondary)', fontFamily: 'var(--font-headline)' }}>{testRuns.length}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Mitigated</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--secondary)', fontFamily: 'var(--font-headline)' }}>{mitigatedDatasets}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Fairness Status</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Open Queue</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: openItems.length > 0 ? 'var(--warning)' : 'var(--success)', fontFamily: 'var(--font-headline)' }}>{openItems.length}</p>
+        </div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Gate Decisions</p>
           <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: gate.allowed ? 'var(--success)' : 'var(--error)', fontFamily: 'var(--font-headline)' }}>
-            {gate.decision || 'ALLOW'}
+            {gateMetrics.total_evaluations || 0}
           </p>
         </div>
-        <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Report</p>
-          <a
-            href="/api/report/pdf"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-ghost"
-            style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '6px 14px' }}
-          >
-            <M icon="picture_as_pdf" style={{ fontSize: 14 }} /> Download PDF
-          </a>
-        </div>
       </div>
+
+      <InstructionsDialog
+        open={showInstructions}
+        onClose={() => setShowInstructions(false)}
+        title="Dataset Score"
+        subtitle="This score is only for fairness datasets, testing, queue resolution, and mitigation."
+        sections={[
+          {
+            title: 'How to generate score data',
+            steps: [
+              'Upload one or more datasets from Dataset Management > Fairness.',
+              'Run fairness analysis to produce dataset reports and queue items.',
+              'Apply mitigation to improve fairness outcomes.',
+              'Review or resolve fairness queue items, then recalculate score.',
+            ],
+          },
+          {
+            title: 'How to read the score',
+            steps: [
+              'Testing Coverage reflects how many datasets have been analyzed.',
+              'Mitigation Coverage reflects adoption of mitigation on analyzed datasets.',
+              'Queue Health drops when unresolved high-severity items remain open.',
+              'Fairness Gate contributes final governance readiness signal.',
+            ],
+          },
+        ]}
+      />
     </motion.div>
   );
 }

@@ -27,13 +27,15 @@ It helps teams:
 ## Main Navigation and What Each Tab Does
 
 ### 1) Home
-A landing page introducing TokenFlow, explaining the Google Vertex "Double Agent" incident it isolates, and providing direct access to Run/Monitor/Governance flows.
+A landing page introducing TokenFlow, explaining the Google Vertex "Double Agent" incident it isolates, and providing direct access to Workflow Management, Monitor, and Dataset Management flows.
 
-### 2) Run
-The core execution environment. This tab consolidates operational execution into three sub-tabs:
-- **Launch:** Pick pre-built test scenarios (e.g., normal safe processing, double agent attacks) or select your own uploaded custom workflows to execute. Automatically takes you to the Token Chain once started.
+### 2) Workflow Management
+The core execution environment. This tab consolidates workflow operations into five sub-tabs:
+- **Mock Workflows:** Pick pre-built test scenarios (e.g., normal safe processing, double-agent attacks) and start secure execution. Automatically takes you to the Token Chain once started.
+- **Uploaded Workflows:** Upload your own custom JSON workflow templates and run them through the same token chain engine.
 - **Token Chain:** Visually track step-by-step token execution. Watch capability tokens undergo their "mint -> active -> burned" lifecycle. See detailed event logs and trigger the "Kill Switch" to halt rogue workflows instantly.
-- **Testbench:** Run comprehensive security scenarios, verify 12 strict invariant assertions, and upload your own custom JSON workflow templates for testing.
+- **Testbench:** Run comprehensive security scenarios and verify strict invariant assertions.
+- **Workflow Score:** Workflow-only scorecard based on chain evidence, security posture, and testbench outcomes.
 
 ### 3) Monitor
 The monitoring and intervention area for live operations. It includes:
@@ -46,8 +48,8 @@ In Security, you can:
 - Override and resume a paused workflow, or safely discard it by revoking tokens.
 - Review the historically immutable audit trail.
 
-### 4) Governance
-Governance combines Fairness and Score views so policy and outcomes are reviewed together.
+### 4) Dataset Management
+Dataset Management combines Fairness and dataset Score views so policy and outcomes are reviewed together.
 
 In Fairness, you can:
 - Audit datasets for structural bias and apply threshold mitigations.
@@ -57,8 +59,8 @@ In Fairness, you can:
 - Run deterministic threshold-based mitigation, tracking exactly which, and how many, cases were impacted.
 
 In Score, you can:
-- Check your current system's aggregated Security and Fairness Compliance Score.
-- View a granular checklist detailing passed/failed requirements across configuration, invariants, and audits.
+- Check your current dataset governance score based on fairness testing and mitigation posture.
+- View a granular checklist detailing passed/failed requirements across dataset governance controls.
 
 ### 5) About
 Explains the real-world Google Vertex AI incident model and helps you visualize and compare a vulnerable architecture against TokenFlow's exact capabilities.
@@ -78,7 +80,7 @@ Credentials are accessed through backend vault proxy, not directly by agents.
 
 ## Custom Workflow Upload Format Requirements
 
-To run a custom workflow, go to **Run > Testbench > Upload Custom**. TokenFlow accepts `.json` files that follow a strict schema to map exactly to the capability token engine.
+To run a custom workflow, go to **Workflow Management > Uploaded Workflows**. TokenFlow accepts `.json` files that follow a strict schema to map exactly to the capability token engine.
 
 ### Required JSON Schema
 

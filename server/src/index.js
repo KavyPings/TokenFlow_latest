@@ -18,6 +18,9 @@ import uploadRoutes from './routes/uploadRoutes.js';
 import fairnessRoutes from './routes/fairnessRoutes.js';
 import demoRoutes from './routes/demoRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
+import llmRoutes from './routes/llmRoutes.js';
+import redteamRoutes from './routes/redteamRoutes.js';
+import replayRoutes from './routes/replayRoutes.js';
 import { workspaceMiddleware } from './middleware/workspaceMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -95,6 +98,10 @@ app.use('/api/testbench', testbenchRoutes);
 app.use('/api/fairness', fairnessRoutes);
 app.use('/api/demo', demoRoutes);
 app.use('/api/report', reportRoutes);
+app.use('/api/llm', llmRoutes);
+app.use('/api/redteam', redteamRoutes);
+app.use('/api/replay', replayRoutes);
+app.use('/api/compliance', replayRoutes);
 
 if (existsSync(CLIENT_DIST_PATH)) {
   app.use(express.static(CLIENT_DIST_PATH));

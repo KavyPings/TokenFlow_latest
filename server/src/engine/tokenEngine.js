@@ -5,6 +5,11 @@ import { broadcast } from '../websocket/wsServer.js';
 const TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 class TokenEngine {
+  logWorkflowEvent(workflowId, eventType, details = {}, actor = 'system') {
+    const syntheticTokenId = `wf_${workflowId}`;
+    this._auditLog(syntheticTokenId, workflowId, eventType, details, actor);
+  }
+
   // ─── Mint a new capability token ──────────────────────────
   mintToken(workflowId, actionType, resourceId, agentId, context = {}, parentTokenId = null, stepIndex = 0) {
     const db = getDb();
