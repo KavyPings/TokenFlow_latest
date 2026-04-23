@@ -124,17 +124,15 @@ A flaw in Google Cloud's AI system allowed agents to act as "double agents":
 - Auto-generation of executive narratives using Google Gemini Flash (using `GEMINI_API_KEY`)
 - Hard-coded UI deterministic fallbacks if API key is not present
 
-## Dashboard Pages
+## Navigation
 
 | Page | Purpose |
 |---|---|
 | **Home (Landing)** | Explains the incident, how TokenFlow works, product guide |
-| **Dashboard** | Operational stats hub across workflow control, fairness, and security |
-| **Workflow Control** | Multi-tab runner: Launch scenarios, watch the Token Chain, and run Testbench |
-| **Security** | Human review panel for flagged violations and audit trail |
-| **Fairness** | Audit datasets, mitigate impact, and generate Gemini AI context reports |
-| **Score** | Aggregated compliance scorecard judging system invariants |
-| **Incident (About)** | Side-by-side architecture comparison |
+| **Run** | Multi-tab runner: Launch scenarios, watch the Token Chain, and run Testbench |
+| **Monitor** | Overview dashboard plus Security review log for flagged workflows |
+| **Governance** | Fairness auditing and Score compliance views in one place |
+| **About** | Side-by-side architecture comparison |
 
 ## Run Locally
 

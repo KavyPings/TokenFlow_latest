@@ -7,10 +7,11 @@ import {
 import { api, getWebSocketUrl } from './api.js';
 import LandingPage from './pages/LandingPage.jsx';
 import TestbenchPage from './pages/TestbenchPage.jsx';
-import UploadPage from './pages/UploadPage.jsx';
 import IncidentPage from './pages/IncidentPage.jsx';
 import FairnessPage from './pages/FairnessPage.jsx';
 import ScoringPage from './pages/ScoringPage.jsx';
+import MonitorPage from './pages/MonitorPage.jsx';
+import GovernancePage from './pages/GovernancePage.jsx';
 import OnboardingWizard from './components/OnboardingWizard.jsx';
 
 /* ─── Interactive Particle Canvas ─── */
@@ -89,12 +90,10 @@ const STEP_META = {
 // Nav tabs
 const NAV_ITEMS = [
   { id: 'home', label: 'Home' },
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'workflow', label: 'Workflow Control', badgeKey: 'running' },
-  { id: 'security', label: 'Security', badgeKey: 'alerts' },
-  { id: 'fairness', label: 'Fairness' },
-  { id: 'scoring', label: 'Score' },
-  { id: 'incident', label: 'About' },
+  { id: 'run', label: 'Run', badgeKey: 'running' },
+  { id: 'monitor', label: 'Monitor', badgeKey: 'alerts' },
+  { id: 'governance', label: 'Governance' },
+  { id: 'about', label: 'About' },
 ];
 
 /* ═══════════════════════════════════════════════════════════
@@ -104,6 +103,8 @@ export default function App() {
   const [page, setPage] = useState('home');
   // workflowSubTab controls which sub-tab is active in the Workflow Control page
   const [workflowSubTab, setWorkflowSubTab] = useState('launch');
+  const [monitorSubTab, setMonitorSubTab] = useState('overview');
+  const [governanceSubTab, setGovernanceSubTab] = useState('score');
   const [overview, setOverview] = useState(null);
   const [health, setHealth] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -235,6 +236,46 @@ export default function App() {
     finally { setBusyAction(''); }
   }
 
+  function navigateToPage(target) {
+    switch (target) {
+      case 'workflow':
+      case 'run':
+        setPage('run');
+        return;
+      case 'dashboard':
+        setPage('monitor');
+        setMonitorSubTab('overview');
+        return;
+      case 'security':
+        setPage('monitor');
+        setMonitorSubTab('security');
+        return;
+      case 'fairness':
+        setPage('governance');
+        setGovernanceSubTab('fairness');
+        return;
+      case 'scoring':
+        setPage('governance');
+        setGovernanceSubTab('score');
+        return;
+      case 'incident':
+      case 'about':
+        setPage('about');
+        return;
+      case 'testbench':
+        setPage('run');
+        setWorkflowSubTab('testbench');
+        return;
+      case 'monitor':
+      case 'governance':
+      case 'home':
+        setPage(target);
+        return;
+      default:
+        setPage('home');
+    }
+  }
+
   function handleStart() {
     withBusy('start', async () => {
       const r = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify({ taskId: selectedTask }) });
@@ -243,7 +284,7 @@ export default function App() {
       await loadDashboard(r.workflowId);
       await loadChain(r.workflowId);
       // Auto-navigate to Token Chain tab
-      setPage('workflow');
+      navigateToPage('workflow');
       setWorkflowSubTab('chain');
     });
   }
@@ -259,7 +300,7 @@ export default function App() {
     await loadChain(result.workflowId);
     pushToast(`Uploaded workflow started — watching token chain.`, 'info');
     // Auto-navigate to Token Chain
-    setPage('workflow');
+    navigateToPage('workflow');
     setWorkflowSubTab('chain');
     return result;
   }
@@ -297,8 +338,10 @@ export default function App() {
       localStorage.removeItem('tf_onboarded');
       sessionStorage.removeItem('tf_session_toured');
       setShowOnboarding(true);
-      setPage('home');
+      navigateToPage('home');
       setWorkflowSubTab('launch');
+      setMonitorSubTab('overview');
+      setGovernanceSubTab('score');
       setSelectedWorkflowId(null);
       setChain([]);
       setAudit([]);
@@ -316,7 +359,7 @@ export default function App() {
         setSelectedWorkflowId(r.workflowId);
         await loadDashboard(r.workflowId);
         await loadChain(r.workflowId);
-        setPage('workflow');
+        navigateToPage('workflow');
         setWorkflowSubTab('chain');
       });
     }, 400);
@@ -325,6 +368,14 @@ export default function App() {
   const alertCount = reviewQueue.length;
   const runningCount = workflows.filter((w) => w.status === 'running' || w.status === 'paused').length;
   const showRefreshButton = socketState === 'offline' || socketState === 'degraded';
+  const normalizedPage =
+    page === 'dashboard' || page === 'security' ? 'monitor'
+      : page === 'workflow' || page === 'testbench' ? 'run'
+        : page === 'fairness' || page === 'scoring' ? 'governance'
+          : page === 'incident' ? 'about'
+            : page;
+  const activeMonitorTab = page === 'security' ? 'security' : monitorSubTab;
+  const activeGovernanceTab = page === 'fairness' ? 'fairness' : page === 'scoring' ? 'score' : governanceSubTab;
 
   return (
     <div className="app-shell min-h-screen">
@@ -395,7 +446,7 @@ export default function App() {
         </div>
         <div className="nav-pills">
           {NAV_ITEMS.map((item) => (
-            <button key={item.id} onClick={() => setPage(item.id)} className={`nav-pill ${page === item.id ? 'active' : ''}`}>
+            <button key={item.id} onClick={() => navigateToPage(item.id)} className={`nav-pill ${normalizedPage === item.id ? 'active' : ''}`}>
               {item.label}
               {item.badgeKey === 'alerts' && alertCount > 0 && <span className="badge-dot" />}
               {item.badgeKey === 'running' && runningCount > 0 && <span className="badge-dot" style={{ background: 'var(--success)' }} />}
@@ -425,33 +476,14 @@ export default function App() {
 
       <div className="main-wrap">
         <AnimatePresence mode="wait">
-          <motion.div key={page} className="page-stage"
+          <motion.div key={`${normalizedPage}:${activeMonitorTab}:${activeGovernanceTab}`} className="page-stage"
             initial={{ opacity: 0, y: 16, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -12, scale: 0.99 }}
             transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
           >
-            {page === 'home' && <LandingPage key="home" onEnter={setPage} />}
-            {page === 'dashboard' && (
-              <DashboardPage
-                key="d"
-                workflows={workflows}
-                reviewQueue={reviewQueue}
-                credentials={credentials}
-                health={health}
-                currentWorkflow={currentWorkflow}
-                chainNodes={chainNodes}
-                audit={audit}
-                socketState={socketState}
-                totalTokens={workflows.reduce((s, w) => s + Object.values(w.token_summary || {}).reduce((a, b) => a + b, 0), 0)}
-                burnedTokens={workflows.reduce((s, w) => s + (w.token_summary?.burned || 0), 0)}
-                busyAction={busyAction}
-                setPage={setPage}
-                setWorkflowSubTab={setWorkflowSubTab}
-                onKill={() => handleKill(currentWorkflow?.id)}
-              />
-            )}
-            {page === 'workflow' && (
+            {normalizedPage === 'home' && <LandingPage key="home" onEnter={navigateToPage} />}
+            {normalizedPage === 'run' && (
               <WorkflowControlPage
                 key="wf"
                 workflows={workflows}
@@ -469,30 +501,61 @@ export default function App() {
                 onKill={() => handleKill(currentWorkflow?.id)}
                 onClearWorkflows={handleClearWorkflows}
                 busyAction={busyAction}
-                setPage={setPage}
+                setPage={navigateToPage}
                 onRunUploadedWorkflow={handleUploadedWorkflowRun}
                 activeTab={workflowSubTab}
                 setActiveTab={setWorkflowSubTab}
               />
             )}
-            {page === 'security' && (
-              <SecurityPage
-                key="s"
-                currentReview={currentReview}
-                reviewQueue={reviewQueue}
-                workflows={workflows}
-                selectedWorkflowId={selectedWorkflowId}
-                setSelectedWorkflowId={setSelectedWorkflowId}
-                audit={audit}
-                onResume={handleResume}
-                onRevoke={handleRevoke}
-                onClearAudit={handleClearAuditLog}
-                busyAction={busyAction}
+            {normalizedPage === 'monitor' && (
+              <MonitorPage
+                activeTab={activeMonitorTab}
+                onSelectTab={setMonitorSubTab}
+                overviewView={(
+                  <DashboardPage
+                    key="d"
+                    workflows={workflows}
+                    reviewQueue={reviewQueue}
+                    credentials={credentials}
+                    health={health}
+                    currentWorkflow={currentWorkflow}
+                    chainNodes={chainNodes}
+                    audit={audit}
+                    socketState={socketState}
+                    totalTokens={workflows.reduce((s, w) => s + Object.values(w.token_summary || {}).reduce((a, b) => a + b, 0), 0)}
+                    burnedTokens={workflows.reduce((s, w) => s + (w.token_summary?.burned || 0), 0)}
+                    busyAction={busyAction}
+                    setPage={navigateToPage}
+                    setWorkflowSubTab={setWorkflowSubTab}
+                    onKill={() => handleKill(currentWorkflow?.id)}
+                  />
+                )}
+                securityView={(
+                  <SecurityPage
+                    key="s"
+                    currentReview={currentReview}
+                    reviewQueue={reviewQueue}
+                    workflows={workflows}
+                    selectedWorkflowId={selectedWorkflowId}
+                    setSelectedWorkflowId={setSelectedWorkflowId}
+                    audit={audit}
+                    onResume={handleResume}
+                    onRevoke={handleRevoke}
+                    onClearAudit={handleClearAuditLog}
+                    busyAction={busyAction}
+                  />
+                )}
               />
             )}
-            {page === 'fairness' && <FairnessPage key="fair" />}
-            {page === 'incident' && <IncidentPage key="inc" />}
-            {page === 'scoring' && <ScoringPage key="score" />}
+            {normalizedPage === 'governance' && (
+              <GovernancePage
+                activeTab={activeGovernanceTab}
+                onSelectTab={setGovernanceSubTab}
+                scoreView={<ScoringPage key="score" />}
+                fairnessView={<FairnessPage key="fair" />}
+              />
+            )}
+            {normalizedPage === 'about' && <IncidentPage key="inc" />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -577,7 +640,7 @@ function DashboardPage({
           <span className="text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: 'var(--primary)' }}>Mission Control</span>
         </div>
         <h1 className="font-headline text-3xl font-bold tracking-tight mb-2" style={{ color: 'var(--on-surface)' }}>System Overview</h1>
-        <p className="text-sm" style={{ color: 'var(--on-surface-variant)' }}>Live status across Workflow Control, Fairness Auditing, and Security monitoring.</p>
+        <p className="text-sm" style={{ color: 'var(--on-surface-variant)' }}>Live status across Run, Monitor, and Governance.</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -706,10 +769,10 @@ function DashboardPage({
         <div className="flex items-center gap-2 mb-5"><M icon="menu_book" style={{ color: 'var(--primary)', fontSize: 18 }} /><h3 className="text-sm font-bold uppercase tracking-[0.15em]">How to Use TokenFlow</h3></div>
         <div className="grid md:grid-cols-2 gap-4">
           {[
-            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(196,192,255,0.08)', title: 'Workflow Control', steps: ['Open Workflow Control in the top nav', 'Select a scenario in the Launch tab', 'Click Start Secure Execution', 'You\'ll be taken to Token Chain automatically', 'Use Testbench tab for stress-testing'] },
-            { icon: 'balance', color: 'var(--secondary)', bg: 'rgba(20,209,255,0.08)', title: 'Fairness Audit', steps: ['Open the Fairness tab', 'Upload a CSV dataset', 'Click Run Analysis to compute bias metrics', 'Review violations in the Report section', 'Click Generate AI Report (needs GEMINI_API_KEY in .env)'] },
-            { icon: 'shield', color: 'var(--error)', bg: 'rgba(255,180,171,0.08)', title: 'Security Monitoring', steps: ['Check the Security tab for flagged intercepts', 'Resume or Revoke paused workflows from the review queue', 'The Vault isolates credentials — agents never hold secrets', 'Use Reset Demo (top bar) to clear all state'] },
-            { icon: 'verified', color: 'var(--success)', bg: 'rgba(52,211,153,0.08)', title: 'Compliance Score', steps: ['Run a workflow first', 'Open the Score tab in the top nav', 'View the compliance scorecard and arc gauge', 'Check the policy checklist for specific items'] },
+            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(196,192,255,0.08)', title: 'Run', steps: ['Open Run in the top nav', 'Select a scenario in Launch', 'Click Start Secure Execution', 'You\'ll move to Token Chain automatically', 'Use Testbench for stress-testing'] },
+            { icon: 'balance', color: 'var(--secondary)', bg: 'rgba(20,209,255,0.08)', title: 'Governance', steps: ['Open Governance', 'Switch to Fairness', 'Upload a CSV dataset', 'Run analysis and review violations', 'Generate AI report when GEMINI_API_KEY is set'] },
+            { icon: 'shield', color: 'var(--error)', bg: 'rgba(255,180,171,0.08)', title: 'Monitor', steps: ['Open Monitor and switch to Security', 'Review flagged workflows', 'Resume or revoke paused workflows', 'Credentials stay isolated in Vault', 'Use Reset Demo to clear state'] },
+            { icon: 'verified', color: 'var(--success)', bg: 'rgba(52,211,153,0.08)', title: 'Governance Score', steps: ['Run a workflow first', 'Open Governance and switch to Score', 'Review the compliance gauge', 'Inspect the checklist and breakdown'] },
           ].map((item) => (
             <div key={item.title} className="rounded-2xl p-4" style={{ background: item.bg, border: `1px solid ${item.color}25` }}>
               <div className="flex items-center gap-2 mb-3"><M icon={item.icon} style={{ fontSize: 15, color: item.color }} /><h4 className="text-xs font-bold uppercase tracking-[0.12em]" style={{ color: item.color }}>{item.title}</h4></div>
@@ -723,191 +786,6 @@ function DashboardPage({
         </div>
       </div>
     </motion.div>
-  );
-}
-
-/* ─── Dashboard: Overview Tab ─── */
-function OverviewTab({ workflows, reviewQueue, credentials, health, currentWorkflow, chainNodes, audit, socketState, totalTokens, burnedTokens, onKill, busyAction, setTab, setPage, setSelectedWorkflowId }) {
-  const liveNodes = chainNodes.length ? chainNodes : STEP_ORDER.map((action, i) => ({ id: `preview-${action}-${i}`, action, status: 'pending', token: null }));
-  const recentEvents = audit.slice(-4).reverse();
-  const progress = chainNodes.length ? Math.round((chainNodes.filter((n) => n.status === 'burned').length / chainNodes.length) * 100) : 0;
-  const fairnessQueueCount = reviewQueue.length;
-  const scoredWorkflowCount = workflows.length;
-
-  return (
-    <div>
-      {/* Hero section */}
-      <section className="hero-grid mb-8">
-        <div className="hero-section hero-stage text-center md:text-left relative">
-          <div className="hero-copy relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-6" style={{ background: 'rgba(20, 209, 255, 0.08)', border: '1px solid rgba(166, 230, 255, 0.2)' }}>
-              <span className="w-2 h-2 rounded-full animate-pulse-subtle" style={{ background: 'var(--secondary)' }} />
-              <span className="text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: 'var(--secondary)' }}>Protocol Active</span>
-            </div>
-            <h1 className="font-headline text-4xl md:text-6xl font-bold tracking-tighter mb-5 leading-tight" style={{ color: 'var(--on-surface)' }}>
-              Secure AI Agents<br /><span style={{ color: 'var(--primary)', fontStyle: 'italic' }}>Before They Act</span>
-            </h1>
-            <p className="text-sm md:text-base max-w-xl md:mx-0 mx-auto mb-8 leading-relaxed" style={{ color: 'var(--on-surface-variant)' }}>
-              Every agent action is restricted by a single-use capability token. Cross-service access is blocked. Credentials never leave the vault.
-            </p>
-            <div className="flex flex-wrap justify-center md:justify-start gap-3 mb-8">
-              <button onClick={() => setTab('launch')} className="btn-primary"><M icon="play_arrow" style={{ fontSize: 18 }} /> Launch Execution</button>
-              <button onClick={() => setTab('chain')} className="btn-ghost"><M icon="token" style={{ fontSize: 18 }} /> View Chain</button>
-            </div>
-            <div className="hero-flow-strip">
-              {liveNodes.map((node, index) => {
-                const meta = STEP_META[node.action] || {};
-                const tone = node.status === 'flagged' || node.status === 'revoked'
-                  ? 'var(--error)'
-                  : node.status === 'burned'
-                    ? 'var(--success)'
-                    : node.status === 'active'
-                      ? 'var(--secondary)'
-                      : 'var(--outline)';
-                return (
-                  <motion.div key={node.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 * index }} className="hero-phase-chip">
-                    <span className="hero-phase-index" style={{ color: tone }}>{meta.phase || String(index + 1).padStart(2, '0')}</span>
-                    <div>
-                      <p className="hero-phase-title">{meta.label || node.action}</p>
-                      <p className="hero-phase-meta" style={{ color: tone }}>{node.status}</p>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div className="ops-panel card">
-          <div className="flex items-start justify-between gap-3 mb-5">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--secondary)' }}>Live Control Room</p>
-              <h3 className="font-headline text-2xl font-bold mt-2">Mission status stays visible while the chain moves.</h3>
-            </div>
-            <div className="ops-live-pill">
-              <span className="w-2 h-2 rounded-full animate-pulse-subtle" style={{ background: socketState === 'live' ? 'var(--success)' : 'var(--warning)' }} />
-              {socketState}
-            </div>
-          </div>
-
-          <div className="signal-grid mb-5">
-            <SignalMetric label="Chain progress" value={`${progress}%`} hint={currentWorkflow ? 'burned through execution' : 'waiting for a workflow'} tone={progress === 100 ? 'success' : 'primary'} msym="token" />
-            <SignalMetric label="Review pressure" value={reviewQueue.length ? `${reviewQueue.length} queued` : '0 queued'} hint={reviewQueue.length ? 'manual intervention required' : 'no pending intercepts'} tone={reviewQueue.length ? 'danger' : 'success'} msym="shield" />
-            <SignalMetric label="Vault mode" value={health?.auth0 ? String(health.auth0).toUpperCase() : 'ONLINE'} hint={`${credentials.length} secrets backend-only`} tone="secondary" msym="lock" />
-            <SignalMetric label="Execution" value={currentWorkflow?.status || 'idle'} hint={currentWorkflow ? currentWorkflow.id.slice(0, 14) : 'select Launch to start'} tone={currentWorkflow?.status === 'paused' ? 'warning' : 'neutral'} msym="hub" />
-          </div>
-
-          <div className="ops-stream mb-5">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-bold uppercase tracking-[0.12em]">Recent transmission</h4>
-              <span className="text-[10px] font-mono" style={{ color: 'var(--outline)' }}>{recentEvents.length ? `${recentEvents.length} events` : 'awaiting activity'}</span>
-            </div>
-            {recentEvents.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--on-surface-variant)' }}>Launch a workflow and this panel will fill with token events in real time.</p>
-            ) : (
-              <div className="space-y-2">
-                {recentEvents.map((entry) => (
-                  <StreamRow key={`${entry.id}-${entry.timestamp}`} entry={entry} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button onClick={() => setTab('chain')} className="btn-primary">
-              <M icon="north_east" style={{ fontSize: 16 }} /> {currentWorkflow ? 'Open Active Chain' : 'View Chain'}
-            </button>
-            <button onClick={() => setPage('security')} className="btn-ghost">
-              <M icon="policy" style={{ fontSize: 16 }} /> Security Log
-            </button>
-            {currentWorkflow && (
-              <button onClick={onKill} disabled={busyAction === 'kill'} className="btn-danger">
-                <M icon="local_fire_department" style={{ fontSize: 16 }} /> {busyAction === 'kill' ? 'Halting...' : 'Kill Switch'}
-              </button>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-        <MetricCard label="Workflows" value={workflows.length} msym="hub" color="primary" sub="Execution chains" delay={0} />
-        <MetricCard label="Intercepts" value={reviewQueue.length} msym="shield" color="error" sub="Flagged for review" delay={1} />
-        <MetricCard label="Tokens" value={totalTokens} msym="key_visualizer" color="secondary" sub={`${burnedTokens} burned`} delay={2} />
-        <MetricCard label="Credentials" value={credentials.length} msym="lock" color="success" sub="Isolated services" delay={3} />
-      </div>
-
-      {/* Fairness + Score spotlight */}
-      <div className="grid md:grid-cols-2 gap-4 mb-8">
-        <div className="card p-6">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--secondary)' }}>Fairness Insights</p>
-              <h3 className="font-headline text-lg font-bold mt-2">Bias checks stay visible while the workflow runs.</h3>
-            </div>
-            <M icon="balance" style={{ color: 'var(--secondary)', fontSize: 20 }} />
-          </div>
-          <p className="text-sm mb-4" style={{ color: 'var(--on-surface-variant)' }}>
-            {fairnessQueueCount > 0
-              ? `${fairnessQueueCount} workflow${fairnessQueueCount === 1 ? '' : 's'} currently flagged for review.`
-              : 'No active fairness flags right now. Upload a dataset to run fairness checks.'}
-          </p>
-          <button onClick={() => setPage('fairness')} className="btn-primary">
-            <M icon="open_in_new" style={{ fontSize: 14 }} /> Open Fairness Audit
-          </button>
-        </div>
-
-        <div className="card p-6">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--primary)' }}>Score Insights</p>
-              <h3 className="font-headline text-lg font-bold mt-2">Scoring output is tracked next to execution state.</h3>
-            </div>
-            <M icon="verified" style={{ color: 'var(--primary)', fontSize: 20 }} />
-          </div>
-          <p className="text-sm mb-4" style={{ color: 'var(--on-surface-variant)' }}>
-            {scoredWorkflowCount > 0
-              ? `${scoredWorkflowCount} workflow${scoredWorkflowCount === 1 ? '' : 's'} available for score inspection.`
-              : 'No scored workflows yet. Start a run to populate score evidence and rationale.'}
-          </p>
-          <button onClick={() => setPage('scoring')} className="btn-ghost">
-            <M icon="open_in_new" style={{ fontSize: 14 }} /> Open Score
-          </button>
-        </div>
-      </div>
-
-      {/* Active workflows */}
-      <div className="card p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--on-surface)' }}>Active Workflows</h3>
-          <button onClick={() => setTab('chain')} className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 transition-all hover:gap-2" style={{ color: 'var(--primary)' }}>
-            View chain <ChevronRight className="h-3 w-3" /></button>
-        </div>
-        {workflows.length === 0 ? (
-          <EmptyState msym="hub" text="No workflows yet. Launch a task to begin." action="Launch" onAction={() => setTab('launch')} />
-        ) : (
-          <div className="space-y-2">
-            {workflows.slice(0, 5).map((w) => (
-              <motion.div key={w.id} whileHover={{ x: 4 }} className="flex items-center gap-4 p-3 rounded-xl card-interactive"
-                style={{ background: 'var(--surface-container-high)', border: '1px solid rgba(70,69,85,0.12)', cursor: 'pointer' }}
-                onClick={() => { setSelectedWorkflowId(w.id); setTab('chain'); }}>
-                <div className="p-2 rounded-lg" style={{ background: 'rgba(196,192,255,0.1)' }}>
-                  <M icon="hub" style={{ color: 'var(--primary)', fontSize: 16 }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold truncate" style={{ color: 'var(--on-surface)' }}>{w.name}</p>
-                  <p className="text-[10px] font-mono" style={{ color: 'var(--on-surface-variant)' }}>{w.id}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StatusPill status={w.status} />
-                  <ChevronRight className="h-3 w-3" style={{ color: 'var(--outline)' }} />
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -1565,7 +1443,7 @@ function SecurityPage({ currentReview, reviewQueue, workflows, selectedWorkflowI
           </div>
           <h4 className="text-base font-bold font-headline mb-2">Security Audit Log</h4>
           <p className="text-sm max-w-md" style={{ color: 'var(--on-surface-variant)' }}>
-            Launch a workflow from the Dashboard → Launch tab to populate this audit trail.
+            Launch a workflow from Run → Launch to populate this audit trail.
           </p>
         </div>
       )}
