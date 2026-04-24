@@ -131,6 +131,7 @@ export default function WorkflowScorePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -151,6 +152,18 @@ export default function WorkflowScorePage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const workflows = data?.overview?.workflows || [];
+    if (workflows.length === 0) {
+      setSelectedWorkflowId('');
+      return;
+    }
+    setSelectedWorkflowId((current) => {
+      if (current && workflows.some((workflow) => workflow.id === current)) return current;
+      return workflows[0].id;
+    });
+  }, [data]);
 
   if (loading) {
     return (
@@ -183,26 +196,46 @@ export default function WorkflowScorePage() {
   const workflows = data?.overview?.workflows || [];
   const reviewQueue = data?.overview?.reviewQueue || [];
   const testRuns = data?.testResults?.results || [];
+  const selectedWorkflow =
+    workflows.find((workflow) => workflow.id === selectedWorkflowId) || workflows[0] || null;
+  const selectedInReview = selectedWorkflow
+    ? reviewQueue.some((item) => item.workflowId === selectedWorkflow.id)
+    : false;
+  const tokenSummary = selectedWorkflow?.token_summary || {};
+  const totalWorkflowTokens = Object.values(tokenSummary).reduce((sum, value) => sum + value, 0);
+  const burnedWorkflowTokens = tokenSummary.burned || 0;
 
-  const totalWorkflows = workflows.length;
-  const completedWorkflows = workflows.filter((w) => w.status === 'completed').length;
-  const abortedWorkflows = workflows.filter((w) => w.status === 'aborted' || w.status === 'killed').length;
-  const flaggedWorkflows = reviewQueue.length;
-
-  const auditedWorkflows = workflows.filter((w) => (w.audit_event_count || 0) > 0).length;
-  const auditScore = totalWorkflows > 0 ? Math.round((auditedWorkflows / totalWorkflows) * 100) : 100;
-
-  const flagRatio = totalWorkflows > 0 ? flaggedWorkflows / totalWorkflows : 0;
-  const interceptScore = Math.round(Math.max(0, 100 - flagRatio * 200));
+  const auditScore = selectedWorkflow
+    ? ((selectedWorkflow.audit_event_count || 0) > 0 ? 100 : 0)
+    : 0;
+  const interceptScore = !selectedWorkflow
+    ? 0
+    : selectedInReview
+      ? 35
+      : selectedWorkflow.status === 'completed'
+        ? 100
+        : selectedWorkflow.status === 'running'
+          ? 70
+          : selectedWorkflow.status === 'paused'
+            ? 45
+            : selectedWorkflow.status === 'aborted' || selectedWorkflow.status === 'killed'
+              ? 55
+              : 50;
+  const tokenCompletionScore = !selectedWorkflow
+    ? 0
+    : totalWorkflowTokens > 0
+      ? Math.round((burnedWorkflowTokens / totalWorkflowTokens) * 100)
+      : (selectedWorkflow.status === 'completed' ? 100 : 0);
 
   const passedRuns = testRuns.filter((r) => r.status === 'passed').length;
   const testPassRate = testRuns.length > 0 ? Math.round((passedRuns / testRuns.length) * 100) : 0;
   const testScore = testRuns.length > 0 ? testPassRate : 50;
 
-  const weights = { audit: 0.4, intercept: 0.35, tests: 0.25 };
+  const weights = { audit: 0.35, intercept: 0.3, completion: 0.2, tests: 0.15 };
   const compositeScore = Math.round(
     auditScore * weights.audit +
       interceptScore * weights.intercept +
+      tokenCompletionScore * weights.completion +
       testScore * weights.tests
   );
 
@@ -210,17 +243,25 @@ export default function WorkflowScorePage() {
     {
       label: 'Audit trail completeness',
       passed: auditScore >= 80,
-      detail: `${auditedWorkflows}/${totalWorkflows} workflows include audit events`,
+      detail: selectedWorkflow
+        ? `${selectedWorkflow.audit_event_count || 0} audit event(s) recorded for selected workflow`
+        : 'Select or run a workflow to evaluate audit trail completeness',
     },
     {
       label: 'Security intercept quality',
       passed: interceptScore >= 70,
-      detail: `${flaggedWorkflows} flagged workflows in review queue`,
+      detail: selectedWorkflow
+        ? (selectedInReview
+          ? 'Selected workflow is currently flagged in review queue'
+          : 'Selected workflow is not flagged in review queue')
+        : 'No workflow selected',
     },
     {
       label: 'Workflow execution evidence',
-      passed: totalWorkflows > 0,
-      detail: totalWorkflows > 0 ? `${totalWorkflows} workflow(s) captured` : 'Run a workflow to capture evidence',
+      passed: tokenCompletionScore >= 60,
+      detail: selectedWorkflow
+        ? `${burnedWorkflowTokens}/${totalWorkflowTokens || 0} tokens burned for selected workflow`
+        : 'Run a workflow to capture token evidence',
     },
     {
       label: 'Testbench invariant health',
@@ -234,8 +275,10 @@ export default function WorkflowScorePage() {
     },
     {
       label: 'Intervention outcomes captured',
-      passed: completedWorkflows + abortedWorkflows > 0,
-      detail: `${completedWorkflows} completed, ${abortedWorkflows} blocked/aborted`,
+      passed: Boolean(selectedWorkflow),
+      detail: selectedWorkflow
+        ? `Selected workflow status: ${selectedWorkflow.status || 'unknown'}`
+        : 'No workflow selected',
     },
   ];
 
@@ -254,9 +297,24 @@ export default function WorkflowScorePage() {
           <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px', fontFamily: 'var(--font-headline)' }}>Workflow Tokenchain Scorecard</h1>
           <p style={{ fontSize: 13, color: 'var(--on-surface-variant)', margin: 0 }}>Operational score based only on workflow tokenchains, intercept quality, and invariant test outcomes.</p>
         </div>
-        <button className="btn-ghost" style={{ fontSize: 11 }} onClick={() => setShowInstructions(true)}>
-          <M icon="help" style={{ fontSize: 14 }} /> How to use
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <select
+            value={selectedWorkflowId}
+            onChange={(event) => setSelectedWorkflowId(event.target.value)}
+            className="px-3 py-2 rounded-xl text-xs font-bold"
+            style={{ background: 'var(--surface-container-high)', border: '1px solid rgba(70,69,85,0.2)', color: 'var(--on-surface)', minWidth: 240 }}
+          >
+            {workflows.length === 0 && <option value="">No workflows available</option>}
+            {workflows.map((workflow) => (
+              <option key={workflow.id} value={workflow.id}>
+                {workflow.name || 'Unnamed Workflow'} ({workflow.id.slice(0, 10)})
+              </option>
+            ))}
+          </select>
+          <button className="btn-ghost" style={{ fontSize: 11 }} onClick={() => setShowInstructions(true)}>
+            <M icon="help" style={{ fontSize: 14 }} /> How to use
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20 }}>
@@ -293,7 +351,9 @@ export default function WorkflowScorePage() {
               unit="%"
               color={auditScore >= 80 ? 'success' : 'warning'}
               msym="receipt_long"
-              detail={`${auditedWorkflows}/${totalWorkflows} workflows include audit trail evidence (weight: 40%)`}
+              detail={selectedWorkflow
+                ? `${selectedWorkflow.audit_event_count || 0} audit events on selected workflow (weight: 35%)`
+                : 'Select a workflow to compute audit evidence (weight: 35%)'}
             />
             <ScoreRow
               label="Security Intercept Quality"
@@ -302,7 +362,20 @@ export default function WorkflowScorePage() {
               unit="%"
               color={interceptScore >= 70 ? 'success' : interceptScore >= 40 ? 'warning' : 'error'}
               msym="shield"
-              detail={`${flaggedWorkflows} flagged workflows — lower flag ratio increases score (weight: 35%)`}
+              detail={selectedWorkflow
+                ? `${selectedInReview ? 'Flagged in queue' : 'No active flag'} (weight: 30%)`
+                : 'Select a workflow to compute intercept quality (weight: 30%)'}
+            />
+            <ScoreRow
+              label="Token Completion"
+              value={tokenCompletionScore}
+              max={100}
+              unit="%"
+              color={tokenCompletionScore >= 70 ? 'success' : tokenCompletionScore >= 40 ? 'warning' : 'error'}
+              msym="token"
+              detail={selectedWorkflow
+                ? `${burnedWorkflowTokens}/${totalWorkflowTokens || 0} tokens burned (weight: 20%)`
+                : 'Select a workflow to compute token completion (weight: 20%)'}
             />
             <ScoreRow
               label="Testbench Pass Rate"
@@ -311,7 +384,7 @@ export default function WorkflowScorePage() {
               unit=""
               color={testScore >= 70 ? 'success' : testScore >= 40 ? 'warning' : 'error'}
               msym="science"
-              detail={testRuns.length > 0 ? `${passedRuns}/${testRuns.length} scenarios passed (weight: 25%)` : 'No testbench runs yet — run scenarios to validate (weight: 25%)'}
+              detail={testRuns.length > 0 ? `${passedRuns}/${testRuns.length} scenarios passed (weight: 15%)` : 'No testbench runs yet — run scenarios to validate (weight: 15%)'}
             />
           </div>
 
@@ -326,20 +399,20 @@ export default function WorkflowScorePage() {
 
       <div className="card" style={{ padding: 20, marginTop: 20, display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Total Workflows</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-headline)' }}>{totalWorkflows}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Selected Workflow</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-headline)' }}>{selectedWorkflow ? selectedWorkflow.id.slice(0, 10) : '—'}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Blocked / Aborted</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--success)', fontFamily: 'var(--font-headline)' }}>{abortedWorkflows}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Selected Status</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--success)', fontFamily: 'var(--font-headline)' }}>{selectedWorkflow?.status || 'idle'}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
           <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Testbench Runs</p>
           <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--secondary)', fontFamily: 'var(--font-headline)' }}>{testRuns.length}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Flagged Queue</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: flaggedWorkflows > 0 ? 'var(--warning)' : 'var(--success)', fontFamily: 'var(--font-headline)' }}>{flaggedWorkflows}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Selected Queue Flag</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: selectedInReview ? 'var(--warning)' : 'var(--success)', fontFamily: 'var(--font-headline)' }}>{selectedInReview ? 1 : 0}</p>
         </div>
       </div>
 

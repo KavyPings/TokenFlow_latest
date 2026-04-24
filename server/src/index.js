@@ -21,6 +21,7 @@ import reportRoutes from './routes/reportRoutes.js';
 import llmRoutes from './routes/llmRoutes.js';
 import redteamRoutes from './routes/redteamRoutes.js';
 import replayRoutes from './routes/replayRoutes.js';
+import enterpriseRoutes from './routes/enterpriseRoutes.js';
 import { workspaceMiddleware } from './middleware/workspaceMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -102,6 +103,7 @@ app.use('/api/llm', llmRoutes);
 app.use('/api/redteam', redteamRoutes);
 app.use('/api/replay', replayRoutes);
 app.use('/api/compliance', replayRoutes);
+app.use('/api/enterprise', enterpriseRoutes);
 
 if (existsSync(CLIENT_DIST_PATH)) {
   app.use(express.static(CLIENT_DIST_PATH));

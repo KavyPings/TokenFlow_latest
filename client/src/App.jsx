@@ -11,10 +11,9 @@ import IncidentPage from './pages/IncidentPage.jsx';
 import FairnessPage from './pages/FairnessPage.jsx';
 import ScoringPage from './pages/ScoringPage.jsx';
 import WorkflowScorePage from './pages/WorkflowScorePage.jsx';
-import RedTeamPage from './pages/RedTeamPage.jsx';
-import ReplayPage from './pages/ReplayPage.jsx';
 import MonitorPage from './pages/MonitorPage.jsx';
 import GovernancePage from './pages/GovernancePage.jsx';
+import EnterprisePage from './pages/EnterprisePage.jsx';
 import OnboardingWizard from './components/OnboardingWizard.jsx';
 import InstructionsDialog from './components/InstructionsDialog.jsx';
 
@@ -97,6 +96,7 @@ const NAV_ITEMS = [
   { id: 'run', label: 'Workflow Management', badgeKey: 'running' },
   { id: 'monitor', label: 'Monitor', badgeKey: 'alerts' },
   { id: 'governance', label: 'Dataset Management' },
+  { id: 'enterprise', label: 'Enterprise Audit' },
   { id: 'about', label: 'About' },
 ];
 
@@ -272,6 +272,7 @@ export default function App() {
         return;
       case 'monitor':
       case 'governance':
+      case 'enterprise':
       case 'home':
         setPage(target);
         return;
@@ -367,14 +368,6 @@ export default function App() {
         setWorkflowSubTab('chain');
       });
     }, 400);
-  }
-
-  function handleOpenReplay(workflowId) {
-    if (workflowId) {
-      setSelectedWorkflowId(workflowId);
-    }
-    navigateToPage('workflow');
-    setWorkflowSubTab('replay');
   }
 
   const alertCount = reviewQueue.length;
@@ -498,7 +491,6 @@ export default function App() {
             {normalizedPage === 'run' && (
               <WorkflowControlPage
                 key="wf"
-                workflows={workflows}
                 chainWorkflows={chainWorkflows}
                 chainNodes={chainNodes}
                 audit={audit}
@@ -515,7 +507,6 @@ export default function App() {
                 busyAction={busyAction}
                 setPage={navigateToPage}
                 onRunUploadedWorkflow={handleUploadedWorkflowRun}
-                onOpenReplay={handleOpenReplay}
                 activeTab={workflowSubTab}
                 setActiveTab={setWorkflowSubTab}
               />
@@ -569,6 +560,7 @@ export default function App() {
               />
             )}
             {normalizedPage === 'about' && <IncidentPage key="inc" />}
+            {normalizedPage === 'enterprise' && <EnterprisePage key="ent" />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -580,11 +572,11 @@ export default function App() {
    PAGE: Workflow Control (Launch | Token Chain | Testbench)
    ═══════════════════════════════════════════════════════════ */
 function WorkflowControlPage({
-  workflows, chainWorkflows, chainNodes, audit,
+  chainWorkflows, chainNodes, audit,
   currentWorkflow, currentChainWorkflow,
   selectedWorkflowId, setSelectedWorkflowId,
   tasks, selectedTask, setSelectedTask,
-  onStart, onKill, onClearWorkflows, busyAction, setPage, onRunUploadedWorkflow, onOpenReplay,
+  onStart, onKill, onClearWorkflows, busyAction, setPage, onRunUploadedWorkflow,
   activeTab, setActiveTab,
 }) {
   const [showInstructions, setShowInstructions] = useState(false);
@@ -594,8 +586,6 @@ function WorkflowControlPage({
     { id: 'uploads', label: 'Uploaded Workflows', msym: 'upload_file' },
     { id: 'chain', label: 'Token Chain', msym: 'token' },
     { id: 'testbench', label: 'Testbench', msym: 'science' },
-    { id: 'redteam', label: 'Red-Team', msym: 'shield' },
-    { id: 'replay', label: 'Replay', msym: 'history' },
     { id: 'workflowScore', label: 'Workflow Score', msym: 'verified' },
   ];
   return (
@@ -647,20 +637,6 @@ function WorkflowControlPage({
         {activeTab === 'testbench' && (
           <motion.div key="testbench" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <TestbenchPage />
-          </motion.div>
-        )}
-        {activeTab === 'redteam' && (
-          <motion.div key="redteam" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <RedTeamPage onOpenReplay={onOpenReplay} />
-          </motion.div>
-        )}
-        {activeTab === 'replay' && (
-          <motion.div key="replay" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <ReplayPage
-              workflowId={selectedWorkflowId}
-              onSelectWorkflow={setSelectedWorkflowId}
-              workflows={workflows}
-            />
           </motion.div>
         )}
         {activeTab === 'workflowScore' && (
@@ -886,6 +862,12 @@ function ChainTab({ chainNodes, currentWorkflow, workflows, selectedWorkflowId, 
   const total = chainNodes.length || 1;
   const progress = Math.round((burnedCount / total) * 100);
   const recentEvents = audit.slice(-4).reverse();
+  const canDownloadWorkflowPdf = currentWorkflow?.status === 'completed';
+
+  function handleDownloadWorkflowPdf() {
+    if (!currentWorkflow?.id || !canDownloadWorkflowPdf) return;
+    window.open(`/api/compliance/export/${currentWorkflow.id}?format=pdf`, '_blank', 'noopener,noreferrer');
+  }
 
   const cliLines = [];
   cliLines.push({ type: 'cmd', text: `tokenflow chain --workflow ${currentWorkflow?.id?.slice(0, 20) || 'none'} --live` });
@@ -945,12 +927,25 @@ function ChainTab({ chainNodes, currentWorkflow, workflows, selectedWorkflowId, 
             </div>
             <p className="text-xs font-mono" style={{ color: 'var(--on-surface-variant)' }}>{currentWorkflow?.id || '—'} • Agent: agent-cloud-worker</p>
           </div>
-          {currentWorkflow && (
-            <button onClick={onKill} disabled={!currentWorkflow || busyAction === 'kill'} className="btn-danger animate-glow">
-              <M icon="local_fire_department" style={{ fontSize: 16 }} /> {busyAction === 'kill' ? 'Halting…' : 'Kill Switch'}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadWorkflowPdf}
+              disabled={!canDownloadWorkflowPdf}
+              className="btn-ghost"
+              title={canDownloadWorkflowPdf ? 'Download workflow compliance PDF' : 'Available after workflow completes'}
+            >
+              <M icon="picture_as_pdf" style={{ fontSize: 16 }} /> Download PDF
             </button>
-          )}
+            {currentWorkflow && (
+              <button onClick={onKill} disabled={!currentWorkflow || busyAction === 'kill'} className="btn-danger animate-glow">
+                <M icon="local_fire_department" style={{ fontSize: 16 }} /> {busyAction === 'kill' ? 'Halting…' : 'Kill Switch'}
+              </button>
+            )}
+          </div>
         </div>
+        <p className="text-[10px] mt-2" style={{ color: 'var(--outline)' }}>
+          PDF export is enabled only after a workflow reaches <strong style={{ color: 'var(--on-surface-variant)' }}>completed</strong> state.
+        </p>
         <div className="mt-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--on-surface-variant)' }}>Chain Progress</span>
@@ -1067,6 +1062,26 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }
     attack: { label: 'Compromised', icon: 'gpp_bad', bg: 'rgba(255,180,171,0.1)', color: 'var(--error)' },
     control: { label: 'Control', icon: 'admin_panel_settings', bg: 'rgba(251,191,36,0.12)', color: 'var(--warning)' },
   };
+
+  function downloadMockWorkflow(task) {
+    if (!task) return;
+    const safeName = String(task.name || task.id || 'mock-workflow')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
+    const payload = JSON.stringify(task, null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${safeName || 'mock-workflow'}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="text-center mb-10">
@@ -1084,41 +1099,51 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }
             ? 'Expected: Complete After Block'
             : (outcomeTone[t.expected_status]?.label || `Expected: ${t.expected_status}`);
           return (
-            <button key={t.id} onClick={() => setSelectedTask(t.id)}
-              className="w-full text-left p-5 rounded-[2rem] transition-all"
-              style={{
-                background: t.id === selectedTask ? 'var(--surface-container)' : 'var(--surface-container-low)',
-                border: t.id === selectedTask ? '2px solid rgba(196,192,255,0.4)' : '2px solid rgba(70,69,85,0.1)',
-                boxShadow: t.id === selectedTask ? '0 0 20px rgba(196,192,255,0.08)' : 'none',
-              }}>
-              <div className="flex items-start gap-4">
-                <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: tone.bg }}>
-                  <M icon={tone.icon} style={{ fontSize: 20, color: tone.color }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h4 className="text-sm font-bold font-headline">{t.name}</h4>
-                    <span className="text-[8px] font-bold uppercase tracking-[0.15em] px-2 py-0.5 rounded" style={{ background: tone.bg, color: tone.color }}>{tone.label}</span>
-                    {t.expected_status && (
-                      <span className="text-[8px] font-bold uppercase tracking-[0.15em] px-2 py-0.5 rounded"
-                        style={{ background: outcomeTone[t.expected_status]?.bg || 'var(--surface-container-highest)', color: outcomeTone[t.expected_status]?.color || 'var(--on-surface-variant)' }}>
-                        {outcomeLabel}
-                      </span>
-                    )}
+            <div key={t.id} className="space-y-2">
+              <button
+                onClick={() => setSelectedTask(t.id)}
+                className="w-full text-left p-5 rounded-[2rem] transition-all"
+                style={{
+                  background: t.id === selectedTask ? 'var(--surface-container)' : 'var(--surface-container-low)',
+                  border: t.id === selectedTask ? '2px solid rgba(196,192,255,0.4)' : '2px solid rgba(70,69,85,0.1)',
+                  boxShadow: t.id === selectedTask ? '0 0 20px rgba(196,192,255,0.08)' : 'none',
+                }}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: tone.bg }}>
+                    <M icon={tone.icon} style={{ fontSize: 20, color: tone.color }} />
                   </div>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--on-surface-variant)' }}>{t.description}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {(t.steps || []).map((s, i) => (
-                      <span key={i} className="px-2 py-0.5 rounded text-[9px] font-mono font-medium" style={{ background: 'var(--surface-container-highest)', color: 'var(--on-surface-variant)' }}>{s.action}</span>
-                    ))}
-                    {t.malicious_step && <span className="px-2 py-0.5 rounded text-[9px] font-mono font-medium" style={{ background: 'rgba(255,180,171,0.1)', color: 'var(--error)' }}>⚠ {t.malicious_step.action}</span>}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h4 className="text-sm font-bold font-headline">{t.name}</h4>
+                      <span className="text-[8px] font-bold uppercase tracking-[0.15em] px-2 py-0.5 rounded" style={{ background: tone.bg, color: tone.color }}>{tone.label}</span>
+                      {t.expected_status && (
+                        <span className="text-[8px] font-bold uppercase tracking-[0.15em] px-2 py-0.5 rounded"
+                          style={{ background: outcomeTone[t.expected_status]?.bg || 'var(--surface-container-highest)', color: outcomeTone[t.expected_status]?.color || 'var(--on-surface-variant)' }}>
+                          {outcomeLabel}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--on-surface-variant)' }}>{t.description}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(t.steps || []).map((s, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded text-[9px] font-mono font-medium" style={{ background: 'var(--surface-container-highest)', color: 'var(--on-surface-variant)' }}>{s.action}</span>
+                      ))}
+                      {t.malicious_step && <span className="px-2 py-0.5 rounded text-[9px] font-mono font-medium" style={{ background: 'rgba(255,180,171,0.1)', color: 'var(--error)' }}>⚠ {t.malicious_step.action}</span>}
+                    </div>
+                  </div>
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full flex-shrink-0 mt-1" style={{ border: `2px solid ${t.id === selectedTask ? 'var(--primary)' : 'var(--outline-variant)'}`, background: t.id === selectedTask ? 'var(--primary)' : 'transparent' }}>
+                    {t.id === selectedTask && <div className="h-2 w-2 rounded-full" style={{ background: 'var(--on-primary)' }} />}
                   </div>
                 </div>
-                <div className="flex h-5 w-5 items-center justify-center rounded-full flex-shrink-0 mt-1" style={{ border: `2px solid ${t.id === selectedTask ? 'var(--primary)' : 'var(--outline-variant)'}`, background: t.id === selectedTask ? 'var(--primary)' : 'transparent' }}>
-                  {t.id === selectedTask && <div className="h-2 w-2 rounded-full" style={{ background: 'var(--on-primary)' }} />}
-                </div>
-              </div>
-            </button>
+              </button>
+              <button
+                onClick={() => downloadMockWorkflow(t)}
+                className="btn-ghost w-full py-2 text-[10px]"
+              >
+                <M icon="download" style={{ fontSize: 14 }} /> Download JSON
+              </button>
+            </div>
           );
         })}
       </div>
@@ -1143,6 +1168,7 @@ function UploadedWorkflowsTab({ onRunUploadedWorkflow }) {
   const [uploadedWfName, setUploadedWfName] = useState('');
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [showInstructions, setShowInstructions] = useState(false);
   const fileInputRef = useRef(null);
 
   async function handleFileUpload(e) {
@@ -1181,14 +1207,19 @@ function UploadedWorkflowsTab({ onRunUploadedWorkflow }) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="text-center mb-8">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, var(--secondary), var(--secondary-container))', boxShadow: '0 0 30px rgba(20,209,255,0.2)' }}>
-          <M icon="upload_file" style={{ fontSize: 30, color: 'var(--on-secondary)' }} />
+      <div className="mb-8">
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, var(--secondary), var(--secondary-container))', boxShadow: '0 0 30px rgba(20,209,255,0.2)' }}>
+            <M icon="upload_file" style={{ fontSize: 30, color: 'var(--on-secondary)' }} />
+          </div>
+          <h2 className="text-2xl font-bold font-headline tracking-tight">Uploaded Workflows</h2>
+          <p className="text-sm mt-2" style={{ color: 'var(--on-surface-variant)' }}>
+            Upload JSON workflows and run them through the exact same token chain engine as mock workflows.
+          </p>
+          <button className="btn-ghost mt-4 mx-auto" style={{ fontSize: '0.7rem' }} onClick={() => setShowInstructions(true)}>
+            <M icon="help" style={{ fontSize: 14 }} /> How to use
+          </button>
         </div>
-        <h2 className="text-2xl font-bold font-headline tracking-tight">Uploaded Workflows</h2>
-        <p className="text-sm mt-2" style={{ color: 'var(--on-surface-variant)' }}>
-          Upload JSON workflows and run them through the exact same token chain engine as mock workflows.
-        </p>
       </div>
 
       <div className="card p-5">
@@ -1220,6 +1251,65 @@ function UploadedWorkflowsTab({ onRunUploadedWorkflow }) {
         )}
         {uploadError && <p className="text-[10px] mt-2" style={{ color: 'var(--error)' }}>{uploadError}</p>}
       </div>
+
+      <InstructionsDialog
+        open={showInstructions}
+        onClose={() => setShowInstructions(false)}
+        title="Uploaded Workflows"
+        subtitle="JSON file format + run flow for uploaded workflows."
+        sections={[
+          {
+            title: 'Required JSON format',
+            steps: [
+              'Upload a .json file that is a single object with top-level keys: name (required), description (optional), agent (optional), and steps (required array).',
+              'Each item inside steps must include: action, service, resource, and actionVerb.',
+              'Allowed action values: READ_OBJECT, CALL_INTERNAL_API, FAIRNESS_CHECK, WRITE_OBJECT, SEND_EMAIL, WRITE_AUDIT_LOG.',
+              'Allowed service values: gcs, internal-api, fairness-engine, email, audit-log.',
+              'Allowed actionVerb values: read, invoke, evaluate, write, send.',
+            ],
+            exampleTitle: 'Minimal valid workflow.json',
+            example: `{
+  "name": "Loan Decision - Uploaded",
+  "description": "Simple 4-step loan workflow",
+  "agent": "agent-cloud-worker",
+  "steps": [
+    {
+      "action": "READ_OBJECT",
+      "service": "gcs",
+      "resource": "applicants/APP-001.json",
+      "actionVerb": "read"
+    },
+    {
+      "action": "CALL_INTERNAL_API",
+      "service": "internal-api",
+      "resource": "api/credit/score",
+      "actionVerb": "invoke"
+    },
+    {
+      "action": "WRITE_OBJECT",
+      "service": "gcs",
+      "resource": "decisions/APP-001.json",
+      "actionVerb": "write"
+    },
+    {
+      "action": "WRITE_AUDIT_LOG",
+      "service": "audit-log",
+      "resource": "audit/APP-001.json",
+      "actionVerb": "write"
+    }
+  ]
+}`,
+          },
+          {
+            title: 'After uploading',
+            steps: [
+              'Click Run Uploaded Workflow to execute it through the same token engine as mock workflows.',
+              'Switch to Token Chain to inspect minted, burned, flagged, and revoked events.',
+              'Use Workflow Score to evaluate execution posture after one or more runs.',
+            ],
+          },
+        ]}
+      />
     </div>
   );
 }

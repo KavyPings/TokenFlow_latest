@@ -1,0 +1,11 @@
+{
+  "decision": "approved",
+  "amount_approved": 25000,
+  "interest_rate": 7.5,
+  "conditions": [],
+  "decline_reasons": [],
+  "decision_letter": "Dear Applicant (ID: APP-001),\n\nWe are pleased to inform you that your loan application has been approved. We appreciate your interest in our financial services.\n\nBased on our assessment, you have been approved for a loan amount of $25,000 at an annual interest rate of 7.5%. Detailed terms, including the repayment schedule and agreement documentation, will be provided to you by a dedicated loan officer in the coming days. Please anticipate further communication outlining the next steps to finalize your loan agreement.",
+  "decided_at": "2026-04-24T07:58:14.387Z",
+  "recommendation": "approve",
+  "score": null
+}

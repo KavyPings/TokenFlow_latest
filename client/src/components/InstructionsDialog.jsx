@@ -61,6 +61,24 @@ export default function InstructionsDialog({
                       </li>
                     ))}
                   </ol>
+                  {section.example && (
+                    <div className="mt-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] mb-2" style={{ color: 'var(--secondary)' }}>
+                        {section.exampleTitle || 'Example'}
+                      </p>
+                      <pre
+                        className="text-[10px] leading-relaxed p-3 rounded-xl overflow-auto"
+                        style={{
+                          background: 'rgba(10,12,24,0.9)',
+                          border: '1px solid rgba(196,192,255,0.2)',
+                          color: 'var(--on-surface)',
+                          maxHeight: '260px',
+                        }}
+                      >
+                        {section.example}
+                      </pre>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

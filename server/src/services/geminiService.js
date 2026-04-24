@@ -384,3 +384,86 @@ function buildDeterministicNarrative(report, metrics, profile) {
 
   return `${riskSentence}\n\n${profileDetail}${violationDetail}${violations.length > 1 ? `An additional ${violations.length - 1} secondary violation${violations.length > 2 ? 's were' : ' was'} also identified across other protected attributes and metrics. ` : ''}All findings have been logged to the immutable audit trail.\n\n${recommendation}`;
 }
+
+// ─── Enterprise Context Analyzer ────────────────────────────────────────────
+
+/**
+ * Analyzes uploaded workflow + dataset using Gemini to produce a context report.
+ * Throws on error (no silent fallback).
+ *
+ * @param {object}   workflowJson   - The full workflow JSON definition (steps array)
+ * @param {object}   datasetMeta    - { columns: string[], rowCount: number, sampleRows: object[] }
+ * @param {string}   [userContext]  - Optional manual context override from the user
+ * @returns {Promise<object>} structured context report
+ */
+export async function analyzeEnterpriseContext(workflowJson, datasetMeta, userContext) {
+  await initGemini();
+  if (!model) throw new Error('Gemini model not initialized. Ensure GEMINI_API_KEY is set in .env.');
+
+  const stepsDescription = (workflowJson?.steps || []).map((s, i) =>
+    `  Step ${i + 1}: action=${s.action}, service=${s.service}, resource=${s.resource}, verb=${s.actionVerb}`
+  ).join('\n');
+
+  const colList = (datasetMeta?.columns || []).join(', ');
+  const samplePreview = JSON.stringify((datasetMeta?.sampleRows || []).slice(0, 3), null, 2).slice(0, 800);
+
+  const contextClause = userContext
+    ? `\n\nThe user has provided this additional context about their data:\n"${userContext}"\n`
+    : '';
+
+  const prompt = `You are TokenFlow OS, an AI-powered security and fairness auditing platform for enterprise AI workflows.
+
+A company has uploaded two files for audit:
+
+1) WORKFLOW DEFINITION (JSON):
+   Name: "${workflowJson?.name || 'Unnamed Workflow'}"
+   Description: "${workflowJson?.description || 'No description'}"
+   Steps:
+${stepsDescription || '   (no steps found)'}
+
+2) DATASET:
+   Columns: [${colList}]
+   Row count: ${datasetMeta?.rowCount || 0}
+   Sample rows:
+${samplePreview}
+${contextClause}
+Based on these uploads, produce a JSON analysis with EXACTLY this structure (no markdown, no prose outside JSON):
+{
+  "summary": "A 2-3 sentence overview of what the company appears to be doing",
+  "workflow_analysis": {
+    "purpose": "What this workflow appears to accomplish",
+    "services_used": ["list of services the workflow touches"],
+    "risk_areas": ["potential security risks identified in the steps"],
+    "checks_planned": ["list of security checks TokenFlow will perform"]
+  },
+  "dataset_analysis": {
+    "purpose": "What this dataset appears to contain",
+    "likely_protected_attributes": ["columns that look like protected attributes (gender, race, age, etc.)"],
+    "likely_outcome_column": "column that looks like a prediction/decision outcome",
+    "likely_score_column": "column that looks like a probability score (or null)",
+    "checks_planned": ["list of fairness checks TokenFlow will perform"]
+  },
+  "planned_actions": [
+    "Step-by-step list of what TokenFlow will do with these uploads"
+  ],
+  "confidence": 0.85
+}
+
+Respond ONLY with valid JSON. No markdown fences, no explanatory text.`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      ...parsed,
+      generated_at: new Date().toISOString(),
+      ai_powered: true,
+      model: 'gemini-2.5-flash',
+    };
+  } catch (err) {
+    console.error('[GEMINI] Enterprise context analysis failed:', err.message);
+    throw new Error(`Gemini API Error: ${err.message}`);
+  }
+}
