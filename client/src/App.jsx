@@ -108,7 +108,7 @@ export default function App() {
   // workflowSubTab controls which sub-tab is active in the Workflow Control page
   const [workflowSubTab, setWorkflowSubTab] = useState('launch');
   const [monitorSubTab, setMonitorSubTab] = useState('overview');
-  const [governanceSubTab, setGovernanceSubTab] = useState('score');
+  const [governanceSubTab, setGovernanceSubTab] = useState('fairness');
   const [overview, setOverview] = useState(null);
   const [health, setHealth] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -260,7 +260,7 @@ export default function App() {
         return;
       case 'scoring':
         setPage('governance');
-        setGovernanceSubTab('score');
+        setGovernanceSubTab('fairness');
         return;
       case 'incident':
       case 'about':
@@ -391,7 +391,6 @@ export default function App() {
         {showOnboarding && (
           <OnboardingWizard
             onFinish={() => setShowOnboarding(false)}
-            onRunAttack={() => { setShowOnboarding(false); handleRunAttack(); }}
           />
         )}
       </AnimatePresence>
@@ -592,9 +591,9 @@ function WorkflowControlPage({
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--secondary)' }}>Scope: Workflow Information</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--secondary)' }}>Workflow Management</p>
           <p className="text-xs mt-1" style={{ color: 'var(--on-surface-variant)' }}>
-            Workflow Management controls workflow execution, token chains, and workflow-only scoring.
+            Run AI workflows, watch their actions step-by-step, test security controls, and check your workflow safety score.
           </p>
         </div>
         <button className="btn-ghost" style={{ fontSize: '0.7rem' }} onClick={() => setShowInstructions(true)}>
@@ -650,29 +649,30 @@ function WorkflowControlPage({
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
         title="Workflow Management"
-        subtitle="Workflow Management contains workflow-only operations and scoring."
+        subtitle="This is where you run, test, and score AI workflows. Here's how each tab works:"
         sections={[
           {
-            title: 'Mock Workflows',
+            title: 'Mock Workflows — Try pre-built scenarios',
             steps: [
-              'Choose a built-in workflow scenario and start secure execution.',
-              'This is the fastest path to generate token chain and score evidence.',
+              'Pick a test scenario from the list (like a normal loan process or a simulated attack).',
+              'Click "Start" and watch the system process each step with secure tokens.',
+              'You\'ll automatically be taken to the Token Chain to see what happened.',
             ],
           },
           {
-            title: 'Uploaded Workflows',
+            title: 'Uploaded Workflows — Test your own',
             steps: [
-              'Upload a JSON workflow definition.',
-              'Run the uploaded workflow to execute through the exact same token engine.',
-              'Inspect results in Token Chain exactly like mock workflows.',
+              'Upload a JSON file describing your own workflow (click "File Formats" for a template).',
+              'Hit "Run" and it goes through the same security process as the built-in scenarios.',
+              'Check the Token Chain tab to see the results.',
             ],
           },
           {
-            title: 'Token Chain, Testbench, Workflow Score',
+            title: 'Other tabs',
             steps: [
-              'Token Chain shows per-workflow token lifecycle and audit evidence.',
-              'Testbench validates invariants and stress-tests controls.',
-              'Workflow Score summarizes workflow-only posture from chain, intercept, and tests.',
+              'Token Chain — See every step your workflow took, visualized as tokens being created, used, and destroyed.',
+              'Testbench — Run automated security tests to make sure the platform\'s controls actually work.',
+              'Workflow Score — Get a safety grade for your workflows based on how they behaved.',
             ],
           },
         ]}
@@ -834,10 +834,10 @@ function DashboardPage({
         <div className="flex items-center gap-2 mb-5"><M icon="menu_book" style={{ color: 'var(--primary)', fontSize: 18 }} /><h3 className="text-sm font-bold uppercase tracking-[0.15em]">How to Use TokenFlow</h3></div>
         <div className="grid md:grid-cols-2 gap-4">
           {[
-            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(196,192,255,0.08)', title: 'Workflow Management', steps: ['Open Workflow Management in the top nav', 'Use Mock Workflows for built-in scenarios', 'Use Uploaded Workflows for your JSON definitions', 'Track results in Token Chain', 'Use Workflow Score for workflow-only posture'] },
-            { icon: 'balance', color: 'var(--secondary)', bg: 'rgba(20,209,255,0.08)', title: 'Dataset Management', steps: ['Open Dataset Management', 'Switch to Fairness', 'Upload a CSV dataset', 'Run analysis and review violations', 'Use Dataset Score for fairness testing + mitigation posture'] },
-            { icon: 'shield', color: 'var(--error)', bg: 'rgba(255,180,171,0.08)', title: 'Monitor', steps: ['Open Monitor and switch to Security', 'Review flagged workflows', 'Resume or revoke paused workflows', 'Credentials stay isolated in Vault', 'Use Reset Demo to clear state'] },
-            { icon: 'verified', color: 'var(--success)', bg: 'rgba(52,211,153,0.08)', title: 'Dataset Score', steps: ['Open Dataset Management and switch to Score', 'Run fairness analysis from Fairness to create score evidence', 'Review the compliance gauge', 'Inspect the checklist and breakdown'] },
+            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(196,192,255,0.08)', title: 'Workflow Management', steps: ['Click "Workflow Management" in the top menu', 'Choose a test scenario in Mock Workflows and hit Start', 'Or upload your own workflow JSON in Uploaded Workflows', 'Watch each step happen in the Token Chain tab', 'See your safety grade in Workflow Score'] },
+            { icon: 'balance', color: 'var(--secondary)', bg: 'rgba(20,209,255,0.08)', title: 'Dataset Management', steps: ['Click "Dataset Management" in the top menu', 'Upload a CSV or JSON dataset in the Fairness tab', 'Map your columns and add the groups you want to check (like gender)', 'Click "Run Analysis" to see if the AI is being fair', 'Check your compliance grade in the Score tab'] },
+            { icon: 'shield', color: 'var(--error)', bg: 'rgba(255,180,171,0.08)', title: 'Monitor', steps: ['Click "Monitor" to see your live dashboard', 'The Overview shows how many workflows are running', 'Switch to Security Review to handle any flagged AI actions', 'Approve safe actions or permanently block suspicious ones'] },
+            { icon: 'domain', color: 'var(--success)', bg: 'rgba(52,211,153,0.08)', title: 'Enterprise Audit', steps: ['Click "Enterprise Audit" in the top menu', 'Upload both a workflow and a dataset', 'Get an AI-powered analysis of your files', 'Run security and fairness checks in one place', 'Download a combined compliance report'] },
           ].map((item) => (
             <div key={item.title} className="rounded-2xl p-4" style={{ background: item.bg, border: `1px solid ${item.color}25` }}>
               <div className="flex items-center gap-2 mb-3"><M icon={item.icon} style={{ fontSize: 15, color: item.color }} /><h4 className="text-xs font-bold uppercase tracking-[0.12em]" style={{ color: item.color }}>{item.title}</h4></div>

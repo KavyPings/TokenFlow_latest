@@ -29,20 +29,23 @@ function pct(v) { return v == null ? '—' : `${(v * 100).toFixed(1)}%`; }
 function FormatHelpDialog({ open, onClose }) {
   if (!open) return null;
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} onClick={e => e.stopPropagation()}
         className="card" style={{ maxWidth: 720, width: '95vw', maxHeight: '85vh', overflow: 'auto', padding: 28, borderColor: 'rgba(196,192,255,0.25)' }}>
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-bold uppercase tracking-[0.12em]">File Format Guide</h2>
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-[0.12em]">How to Format Your Files</h2>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--on-surface-variant)' }}>Use these templates as a starting point for your uploads.</p>
+          </div>
           <button onClick={onClose} className="btn-ghost p-1"><M icon="close" style={{ fontSize: 18 }} /></button>
         </div>
         {/* Workflow format */}
         <div className="mb-5">
-          <div className="flex items-center gap-2 mb-2"><M icon="code" style={{ fontSize: 14, color: 'var(--primary)' }} /><p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--primary)' }}>Workflow JSON Format</p></div>
+          <div className="flex items-center gap-2 mb-2"><M icon="code" style={{ fontSize: 14, color: 'var(--primary)' }} /><p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--primary)' }}>Workflow File (.json)</p></div>
+          <p className="text-[11px] mb-2" style={{ color: 'var(--on-surface-variant)' }}>A workflow describes the steps your AI agent will take. Each step says what it wants to do, which service it needs, and what data it is working with. Copy and edit this template:</p>
           <pre className="p-4 rounded-xl text-[11px] overflow-x-auto leading-relaxed" style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.12)', color: 'var(--on-surface-variant)' }}>{`{
   "name": "Loan Processing Pipeline",
   "description": "Reads applicant data and scores credit risk",
-  "agent": "agent-cloud-worker",
   "steps": [
     {
       "action": "READ_OBJECT",
@@ -64,13 +67,18 @@ function FormatHelpDialog({ open, onClose }) {
     }
   ]
 }`}</pre>
-          <p className="text-[10px] mt-2" style={{ color: 'var(--on-surface-variant)' }}>
-            <strong>Actions:</strong> READ_OBJECT, CALL_INTERNAL_API, WRITE_OBJECT, SEND_NOTIFICATION, CHECK_COMPLIANCE
-          </p>
+          <div className="mt-2 text-[10px] space-y-1" style={{ color: 'var(--on-surface-variant)' }}>
+            <p><strong>What each field means:</strong></p>
+            <p>• <strong>action</strong> — What the AI wants to do: READ_OBJECT (read data), WRITE_OBJECT (save data), or CALL_INTERNAL_API (use another service)</p>
+            <p>• <strong>service</strong> — Which system it needs access to (e.g., "gcs" for cloud storage, "internal-api" for an API)</p>
+            <p>• <strong>resource</strong> — The specific file or endpoint it wants to access</p>
+            <p>• <strong>actionVerb</strong> — A simple word for the action: "read", "write", or "invoke"</p>
+          </div>
         </div>
         {/* Dataset format */}
         <div>
-          <div className="flex items-center gap-2 mb-2"><M icon="dataset" style={{ fontSize: 14, color: 'var(--secondary)' }} /><p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--secondary)' }}>Dataset CSV Format</p></div>
+          <div className="flex items-center gap-2 mb-2"><M icon="dataset" style={{ fontSize: 14, color: 'var(--secondary)' }} /><p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--secondary)' }}>Dataset File (.csv or .json)</p></div>
+          <p className="text-[11px] mb-2" style={{ color: 'var(--on-surface-variant)' }}>A dataset is a table of decisions your AI has made. Each row is one decision (like a loan application). Copy and edit this template:</p>
           <pre className="p-4 rounded-xl text-[11px] overflow-x-auto leading-relaxed" style={{ background: 'var(--surface-container)', border: '1px solid rgba(20,209,255,0.12)', color: 'var(--on-surface-variant)' }}>{`id,gender,age,income,credit_score,loan_amount,approved,predicted
 APP-001,Male,35,75000,720,25000,1,1
 APP-002,Female,28,52000,680,15000,1,1
@@ -78,9 +86,12 @@ APP-003,Male,45,95000,750,40000,1,1
 APP-004,Female,32,48000,620,20000,0,0
 APP-005,NonBinary,29,55000,640,18000,1,0`}</pre>
           <div className="mt-2 text-[10px] space-y-1" style={{ color: 'var(--on-surface-variant)' }}>
-            <p><strong>Required columns:</strong> A record ID, a target outcome (binary 0/1), a predicted outcome (binary 0/1)</p>
-            <p><strong>Protected attributes:</strong> Columns like gender, race, age — at least 2 distinct groups needed</p>
-            <p><strong>Optional:</strong> predicted_score (float 0–1), timestamp, model_version</p>
+            <p><strong>What you need in your dataset:</strong></p>
+            <p>• <strong>An ID column</strong> — A unique identifier for each row (like "id" or "application_number")</p>
+            <p>• <strong>Actual outcome</strong> — What really happened (1 = approved, 0 = rejected)</p>
+            <p>• <strong>Predicted outcome</strong> — What the AI decided (1 = approved, 0 = rejected)</p>
+            <p>• <strong>Protected attributes</strong> — Columns like gender, age, or race that you want to check for bias. Must have at least 2 different values.</p>
+            <p>• <strong>Optional: predicted_score</strong> — A confidence number between 0 and 1 (needed if you want to run bias mitigation)</p>
           </div>
         </div>
       </motion.div>
@@ -255,6 +266,7 @@ export default function EnterprisePage() {
               mitigationResult={mitigationResult}
               auditName={auditName}
               onSave={handleSaveAudit}
+              savedAudits={savedAudits}
             />
           </motion.div>
         )}
@@ -851,14 +863,26 @@ function FairnessAnalysisTab({ datasetFile, datasetConfig, datasetMeta, fairness
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Sub-tab 4: Combined Report — with download
+   Sub-tab 4: Combined Report — with past-audit dropdown
    ═══════════════════════════════════════════════════════════ */
-function CombinedReportTab({ contextReport, wfChain, wfStatus, fairnessResult, mitigationResult, auditName, onSave }) {
-  const report = fairnessResult?.report;
-  const burned = wfChain.filter(t => t.status === 'burned').length;
-  const flagged = wfChain.filter(t => t.status === 'flagged').length;
-  const total = wfChain.length;
-  const secScore = total > 0 ? Math.max(0, 100 - (flagged * 20) - (wfStatus === 'aborted' ? 10 : 0)) : null;
+function CombinedReportTab({ contextReport, wfChain, wfStatus, fairnessResult, mitigationResult, auditName, onSave, savedAudits }) {
+  const [selectedPastId, setSelectedPastId] = useState('current');
+
+  // Determine data source: past audit or current live session
+  const pastAudit = selectedPastId !== 'current' ? savedAudits.find(a => a.id === selectedPastId) : null;
+
+  const activeContextReport  = pastAudit ? pastAudit.contextReport  : contextReport;
+  const activeWfChain        = pastAudit ? (pastAudit.wfChain || []) : wfChain;
+  const activeWfStatus       = pastAudit ? pastAudit.wfStatus       : wfStatus;
+  const activeFairnessResult = pastAudit ? pastAudit.fairnessResult : fairnessResult;
+  const activeMitigation     = pastAudit ? pastAudit.mitigationResult : mitigationResult;
+  const activeAuditName      = pastAudit ? pastAudit.name            : auditName;
+
+  const report = activeFairnessResult?.report;
+  const burned = activeWfChain.filter(t => t.status === 'burned').length;
+  const flagged = activeWfChain.filter(t => t.status === 'flagged').length;
+  const total = activeWfChain.length;
+  const secScore = total > 0 ? Math.max(0, 100 - (flagged * 20) - (activeWfStatus === 'aborted' ? 10 : 0)) : null;
   const fairScore = report ? Math.max(0, (report.risk_level === 'low' ? 90 : report.risk_level === 'medium' ? 60 : 30) - (report.violation_count || 0) * 3) : null;
   const parts = [secScore, fairScore].filter(s => s !== null);
   const combinedScore = parts.length > 0 ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : null;
@@ -866,30 +890,66 @@ function CombinedReportTab({ contextReport, wfChain, wfStatus, fairnessResult, m
   const hasData = secScore !== null || fairScore !== null;
 
   function downloadReport() {
-    const name = auditName || 'Enterprise Audit Report';
+    const name = activeAuditName || 'Enterprise Audit Report';
     const lines = [`TOKENFLOW ENTERPRISE AUDIT REPORT`, `Name: ${name}`, `Generated: ${new Date().toLocaleString()}`, `${'═'.repeat(50)}`, ''];
     if (combinedScore !== null) lines.push(`COMBINED SCORE: ${combinedScore}/100`, '');
-    if (secScore !== null) lines.push(`WORKFLOW SECURITY: ${secScore}/100`, `  Tokens: ${total} total, ${burned} burned, ${flagged} flagged`, `  Status: ${wfStatus}`, '');
-    if (fairScore !== null) { lines.push(`FAIRNESS COMPLIANCE: ${fairScore}/100`, `  Risk Level: ${report?.risk_level}`, `  Violations: ${report?.violation_count || 0}`); if (mitigationResult) lines.push(`  Mitigation: Applied (${mitigationResult.mitigation?.impacted_count || 0} records)`); lines.push(''); }
-    if (contextReport?.summary) lines.push(`AI CONTEXT SUMMARY:`, contextReport.summary, '');
-    if (contextReport?.planned_actions?.length > 0) { lines.push('COMPLETED ACTIONS:'); contextReport.planned_actions.forEach((a, i) => lines.push(`  ${i + 1}. ${a}`)); }
+    if (secScore !== null) lines.push(`WORKFLOW SECURITY: ${secScore}/100`, `  Tokens: ${total} total, ${burned} burned, ${flagged} flagged`, `  Status: ${activeWfStatus}`, '');
+    if (fairScore !== null) { lines.push(`FAIRNESS COMPLIANCE: ${fairScore}/100`, `  Risk Level: ${report?.risk_level}`, `  Violations: ${report?.violation_count || 0}`); if (activeMitigation) lines.push(`  Mitigation: Applied (${activeMitigation.mitigation?.impacted_count || 0} records)`); lines.push(''); }
+    if (activeContextReport?.summary) lines.push(`AI CONTEXT SUMMARY:`, activeContextReport.summary, '');
+    if (activeContextReport?.planned_actions?.length > 0) { lines.push('COMPLETED ACTIONS:'); activeContextReport.planned_actions.forEach((a, i) => lines.push(`  ${i + 1}. ${a}`)); }
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `${name.replace(/\s+/g, '_')}_report.txt`; a.click();
     URL.revokeObjectURL(url);
   }
 
+  // Past-audit selector bar — always visible at the top
+  const selectorBar = (
+    <div className="flex items-center gap-3 mb-5 p-3 rounded-xl" style={{ background: 'rgba(196,192,255,0.05)', border: '1px solid rgba(196,192,255,0.12)' }}>
+      <M icon="history" style={{ fontSize: 16, color: 'var(--primary)', flexShrink: 0 }} />
+      <div className="flex-1 min-w-0">
+        <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: 'var(--on-surface-variant)' }}>Viewing Report</p>
+        <select
+          value={selectedPastId}
+          onChange={e => setSelectedPastId(e.target.value)}
+          className="w-full rounded-lg px-3 py-1.5 text-xs"
+          style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.2)', color: 'var(--on-surface)' }}
+        >
+          <option value="current">⚡ Current Session{auditName ? ` — ${auditName}` : ''}</option>
+          {savedAudits.length > 0 && (
+            <optgroup label="Saved Audits">
+              {savedAudits.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.name} — {new Date(a.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </div>
+      {pastAudit && (
+        <span className="text-[9px] px-2 py-1 rounded-full font-bold uppercase tracking-widest flex-shrink-0"
+          style={{ background: 'rgba(20,209,255,0.1)', color: 'var(--secondary)', border: '1px solid rgba(20,209,255,0.2)' }}>
+          Archived
+        </span>
+      )}
+    </div>
+  );
+
   if (!hasData) {
     return (
       <div>
         <h2 className="text-sm font-bold uppercase tracking-[0.12em] mb-4">Combined Enterprise Report</h2>
+        {selectorBar}
         <div className="card" style={{ padding: '48px 32px', textAlign: 'center' }}>
           <div className="inline-flex p-4 rounded-2xl mb-4" style={{ background: 'rgba(196,192,255,0.08)' }}>
             <M icon="summarize" style={{ fontSize: 48, color: 'var(--outline)' }} />
           </div>
           <h2 className="text-lg font-bold font-headline mb-2">No Report Data Yet</h2>
           <p className="text-xs" style={{ color: 'var(--on-surface-variant)', maxWidth: 400, margin: '0 auto' }}>
-            Run the Workflow Security or Fairness Analysis checks first. This tab will aggregate all scores into a combined enterprise report.
+            {savedAudits.length > 0
+              ? 'Run Workflow Security or Fairness Analysis for the current session, or pick a saved audit from the dropdown above.'
+              : 'Run the Workflow Security or Fairness Analysis checks first. This tab will aggregate all scores into a combined enterprise report.'}
           </p>
         </div>
       </div>
@@ -899,14 +959,18 @@ function CombinedReportTab({ contextReport, wfChain, wfStatus, fairnessResult, m
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-bold uppercase tracking-[0.12em]">{auditName || 'Combined Enterprise Report'}</h2>
+        <h2 className="text-sm font-bold uppercase tracking-[0.12em]">{activeAuditName || 'Combined Enterprise Report'}</h2>
         <div className="flex gap-2">
-          <button onClick={onSave} className="btn-ghost px-4 py-2 text-xs"><M icon="save" style={{ fontSize: 14 }} /> Save Audit</button>
+          {selectedPastId === 'current' && (
+            <button onClick={onSave} className="btn-ghost px-4 py-2 text-xs"><M icon="save" style={{ fontSize: 14 }} /> Save Audit</button>
+          )}
           <button onClick={downloadReport} className="btn-primary px-4 py-2 text-xs"><M icon="download" style={{ fontSize: 14 }} /> Download Report</button>
         </div>
       </div>
 
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      {selectorBar}
+
+      <motion.div key={selectedPastId} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
         {/* Combined score */}
         <div className="card p-8 text-center mb-6" style={{ borderColor: `${scoreColor(combinedScore)}33` }}>
           <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--on-surface-variant)' }}>Combined Enterprise Score</p>
@@ -921,22 +985,22 @@ function CombinedReportTab({ contextReport, wfChain, wfStatus, fairnessResult, m
             <div className="card p-5">
               <div className="flex items-center gap-2 mb-3"><M icon="security" style={{ fontSize: 16, color: 'var(--primary)' }} /><p className="text-xs font-bold uppercase tracking-[0.12em]">Workflow Security</p></div>
               <p className="text-4xl font-bold font-headline mb-2" style={{ color: scoreColor(secScore) }}>{secScore}</p>
-              <div className="space-y-1 text-[11px]" style={{ color: 'var(--on-surface-variant)' }}><p>Tokens: {total} ({burned} burned, {flagged} flagged)</p><p>Status: <span className="font-bold" style={{ color: wfStatus === 'completed' ? 'var(--success)' : 'var(--error)' }}>{wfStatus}</span></p></div>
+              <div className="space-y-1 text-[11px]" style={{ color: 'var(--on-surface-variant)' }}><p>Tokens: {total} ({burned} burned, {flagged} flagged)</p><p>Status: <span className="font-bold" style={{ color: activeWfStatus === 'completed' ? 'var(--success)' : 'var(--error)' }}>{activeWfStatus}</span></p></div>
             </div>
           )}
           {fairScore !== null && (
             <div className="card p-5">
               <div className="flex items-center gap-2 mb-3"><M icon="balance" style={{ fontSize: 16, color: 'var(--secondary)' }} /><p className="text-xs font-bold uppercase tracking-[0.12em]">Fairness Compliance</p></div>
               <p className="text-4xl font-bold font-headline mb-2" style={{ color: scoreColor(fairScore) }}>{fairScore}</p>
-              <div className="space-y-1 text-[11px]" style={{ color: 'var(--on-surface-variant)' }}><p>Risk: <span className="font-bold uppercase" style={{ color: scoreColor(fairScore) }}>{report?.risk_level}</span></p><p>Violations: {report?.violation_count || 0}</p><p>Mitigation: {mitigationResult ? `Applied (${mitigationResult.mitigation?.impacted_count || 0} records)` : 'Not applied'}</p></div>
+              <div className="space-y-1 text-[11px]" style={{ color: 'var(--on-surface-variant)' }}><p>Risk: <span className="font-bold uppercase" style={{ color: scoreColor(fairScore) }}>{report?.risk_level}</span></p><p>Violations: {report?.violation_count || 0}</p><p>Mitigation: {activeMitigation ? `Applied (${activeMitigation.mitigation?.impacted_count || 0} records)` : 'Not applied'}</p></div>
             </div>
           )}
         </div>
         {/* Context summary */}
-        {contextReport?.summary && (<div className="card p-5 mb-6"><h3 className="text-xs font-bold uppercase tracking-[0.12em] mb-3">AI Context Summary</h3><p className="text-[11px] leading-relaxed" style={{ color: 'var(--on-surface-variant)' }}>{contextReport.summary}</p></div>)}
-        {contextReport?.planned_actions?.length > 0 && (
+        {activeContextReport?.summary && (<div className="card p-5 mb-6"><h3 className="text-xs font-bold uppercase tracking-[0.12em] mb-3">AI Context Summary</h3><p className="text-[11px] leading-relaxed" style={{ color: 'var(--on-surface-variant)' }}>{activeContextReport.summary}</p></div>)}
+        {activeContextReport?.planned_actions?.length > 0 && (
           <div className="card p-5"><h3 className="text-xs font-bold uppercase tracking-[0.12em] mb-3">Actions Completed</h3>
-            <div className="space-y-1">{contextReport.planned_actions.map((a, i) => (<div key={i} className="flex items-center gap-2 text-[11px]"><M icon="check_circle" style={{ fontSize: 13, color: 'var(--success)' }} /><span style={{ color: 'var(--on-surface-variant)' }}>{a}</span></div>))}</div>
+            <div className="space-y-1">{activeContextReport.planned_actions.map((a, i) => (<div key={i} className="flex items-center gap-2 text-[11px]"><M icon="check_circle" style={{ fontSize: 13, color: 'var(--success)' }} /><span style={{ color: 'var(--on-surface-variant)' }}>{a}</span></div>))}</div>
           </div>
         )}
       </motion.div>
