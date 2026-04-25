@@ -5,42 +5,43 @@
    DESIGN TOKENS — Material Design 3 Dark (Sentinel)
    ═══════════════════════════════════════════════════════════ */
 :root {
-  --primary: #c4c0ff;
-  --primary-container: #8781ff;
-  --on-primary: #2000a4;
-  --on-primary-container: #1b0091;
-  --inverse-primary: #4f44e2;
-  --primary-fixed: #e3dfff;
-  --primary-fixed-dim: #c4c0ff;
-  --secondary: #a6e6ff;
-  --secondary-container: #14d1ff;
-  --on-secondary: #003543;
-  --on-secondary-container: #00566b;
-  --secondary-fixed-dim: #4cd6ff;
-  --tertiary: #c8c6c6;
-  --tertiary-container: #929090;
-  --error: #ffb4ab;
-  --error-container: #93000a;
-  --on-error: #690005;
-  --surface: #131313;
-  --surface-dim: #131313;
-  --surface-bright: #393939;
-  --surface-container-lowest: #0e0e0e;
-  --surface-container-low: #1b1b1b;
-  --surface-container: #1f1f1f;
-  --surface-container-high: #2a2a2a;
-  --surface-container-highest: #353535;
-  --surface-variant: #353535;
-  --on-surface: #e2e2e2;
-  --on-surface-variant: #c7c4d8;
-  --on-background: #e2e2e2;
-  --outline: #918fa1;
-  --outline-variant: #464555;
-  --inverse-surface: #e2e2e2;
-  --inverse-on-surface: #303030;
-  --surface-tint: #c4c0ff;
-  --success: #34d399;
-  --warning: #fbbf24;
+  --primary: #7fa5be;
+  --primary-container: #3b5e74;
+  --on-primary: #0e1a22;
+  --on-primary-container: #1a3040;
+  --inverse-primary: #4a7088;
+  --primary-fixed: #b8cfdb;
+  --primary-fixed-dim: #7fa5be;
+  --secondary: #7aabb5;
+  --secondary-container: #3a6e78;
+  --on-secondary: #0e2226;
+  --on-secondary-container: #1a3840;
+  --secondary-fixed-dim: #6a9ba6;
+  --tertiary: #b8b6b6;
+  --tertiary-container: #7e7c7c;
+  --error: #c49088;
+  --error-container: #6d2820;
+  --on-error: #3a0e08;
+  --surface: #111416;
+  --surface-dim: #111416;
+  --surface-bright: #282e33;
+  --surface-container-lowest: #0c0e10;
+  --surface-container-low: #171b1e;
+  --surface-container: #1b2024;
+  --surface-container-high: #22282d;
+  --surface-container-highest: #2c3338;
+  --surface-variant: #22282d;
+  --on-surface: #cdd5db;
+  --on-surface-variant: #8a9aa6;
+  --on-background: #cdd5db;
+  --outline: #5e717e;
+  --outline-variant: #2e3b44;
+  --inverse-surface: #cdd5db;
+  --inverse-on-surface: #1c2328;
+  --surface-tint: #7fa5be;
+  --success: #6db89e;
+  --warning: #c4a355;
+  --error-bright: #c49088;
 
   font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
   color: var(--on-surface);
@@ -92,8 +93,8 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   width: 94%;
   max-width: 82rem;
   border-radius: 1rem;
-  border: 1px solid rgba(70, 69, 85, 0.25);
-  background: rgba(27, 27, 27, 0.75);
+  border: 1px solid rgba(46, 59, 68, 0.35);
+  background: rgba(23, 27, 30, 0.85);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   display: flex;
@@ -103,16 +104,16 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   flex-wrap: wrap;
   padding: 0.6rem 1.25rem;
   z-index: 50;
-  box-shadow: 0 0 0 1px rgba(196,192,255,0.04), 0 8px 32px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }
 
 .nav-pills {
   display: flex;
   gap: 2px;
-  background: rgba(14, 14, 14, 0.6);
+  background: rgba(12, 14, 16, 0.7);
   padding: 3px;
   border-radius: 0.75rem;
-  border: 1px solid rgba(70, 69, 85, 0.15);
+  border: 1px solid rgba(46, 59, 68, 0.22);
   overflow-x: auto;
   max-width: 100%;
   scrollbar-width: none;
@@ -136,9 +137,9 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
 }
 .nav-pill:hover { color: var(--on-surface); background: rgba(255, 255, 255, 0.05); }
 .nav-pill.active {
-  color: var(--on-primary);
-  background: linear-gradient(135deg, var(--primary), var(--primary-container));
-  box-shadow: 0 0 14px rgba(196, 192, 255, 0.3);
+  color: #fff;
+  background: var(--primary-container);
+  box-shadow: none;
 }
 .nav-pill .badge-dot {
   position: absolute;
@@ -229,8 +230,8 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
 
 .status-rail-toggle:hover {
   color: var(--on-surface);
-  border-color: rgba(196, 192, 255, 0.3);
-  background: rgba(196, 192, 255, 0.08);
+  border-color: rgba(127, 165, 190, 0.25);
+  background: rgba(127, 165, 190, 0.06);
 }
 
 .status-rail-body {
@@ -377,8 +378,8 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
 }
 .card-interactive:hover {
   transform: translateY(-4px) scale(1.01);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-  border-color: rgba(196, 192, 255, 0.2);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  border-color: rgba(127, 165, 190, 0.18);
 }
 
 /* ─── Card hover pop for regular .card ─── */
@@ -390,14 +391,13 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
 /* ─── Glowing special cards ─── */
 .card-glow-primary {
   background: var(--surface-container);
-  border: 1px solid rgba(196, 192, 255, 0.15);
+  border: 1px solid rgba(127, 165, 190, 0.12);
   border-radius: 2rem;
-  box-shadow: 0 0 0 1px rgba(196,192,255,0.04), inset 0 0 60px rgba(196,192,255,0.02);
   transition: all 0.3s ease;
 }
 .card-glow-primary:hover {
-  border-color: rgba(196, 192, 255, 0.3);
-  box-shadow: 0 0 40px rgba(196,192,255,0.08), 0 16px 48px rgba(0,0,0,0.4);
+  border-color: rgba(127, 165, 190, 0.22);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
 }
 .card-glow-error {
   background: var(--surface-container);
@@ -421,7 +421,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(196, 192, 255, 0.07) 0%, transparent 70%);
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(127, 165, 190, 0.03) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -615,7 +615,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
 }
 
 .workflow-row:hover {
-  border-color: rgba(196, 192, 255, 0.18);
+  border-color: rgba(127, 165, 190, 0.14);
   box-shadow: 0 18px 30px rgba(0, 0, 0, 0.18);
 }
 
@@ -626,7 +626,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   width: 2rem;
   height: 2rem;
   border-radius: 0.8rem;
-  background: rgba(196,192,255,0.1);
+  background: rgba(127,165,190,0.08);
 }
 
 .protocol-row {
@@ -716,21 +716,21 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   justify-content: center;
   gap: 0.5rem;
   padding: 0.85rem 1.75rem;
-  background: linear-gradient(135deg, var(--primary), var(--primary-container));
-  color: var(--on-primary-container);
+  background: var(--primary-container);
+  color: var(--on-surface);
   font-weight: 700;
   font-size: 0.75rem;
   font-family: "Inter", sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border: none;
+  border: 1px solid rgba(127, 165, 190, 0.2);
   border-radius: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 0 20px rgba(196, 192, 255, 0.2);
+  box-shadow: none;
 }
-.btn-primary:hover { transform: scale(0.97); box-shadow: 0 0 32px rgba(196, 192, 255, 0.35); }
-.btn-primary:active { transform: scale(0.94); }
+.btn-primary:hover { background: #4a7088; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
+.btn-primary:active { transform: scale(0.97); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
 .btn-ghost {
@@ -780,7 +780,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   text-transform: uppercase; letter-spacing: 0.12em; font-family: "Inter", sans-serif;
 }
 .pill-burned, .pill-completed { background: rgba(52, 211, 153, 0.1); color: var(--success); }
-.pill-active, .pill-running { background: rgba(196, 192, 255, 0.1); color: var(--primary); }
+.pill-active, .pill-running { background: rgba(127, 165, 190, 0.1); color: var(--primary); }
 .pill-flagged, .pill-revoked, .pill-aborted { background: rgba(255, 180, 171, 0.1); color: var(--error); }
 .pill-paused { background: rgba(251, 191, 36, 0.1); color: var(--warning); }
 .pill-idle, .pill-pending { background: rgba(145, 143, 161, 0.1); color: var(--outline); }
@@ -913,7 +913,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   height: 100%;
   border-radius: 9999px;
   background: linear-gradient(90deg, var(--primary-container), var(--primary));
-  box-shadow: 0 0 12px rgba(196, 192, 255, 0.5);
+  box-shadow: none;
   transition: width 0.6s ease;
 }
 .progress-fill.danger {
@@ -936,7 +936,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   border: 1px solid rgba(70, 69, 85, 0.3);
   max-width: 90%;
 }
-.toast-info { background: rgba(196, 192, 255, 0.1); color: var(--primary); }
+.toast-info { background: rgba(127, 165, 190, 0.08); color: var(--primary); }
 .toast-error { background: rgba(147, 0, 10, 0.25); color: var(--error); }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1009,8 +1009,8 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
 .animate-pulse-subtle { animation: pulse-subtle 2s ease-in-out infinite; }
 
 @keyframes glow-breathe {
-  0%, 100% { box-shadow: 0 0 20px rgba(196,192,255,0.1); }
-  50% { box-shadow: 0 0 40px rgba(196,192,255,0.2); }
+  0%, 100% { box-shadow: 0 0 16px rgba(127,165,190,0.06); }
+  50% { box-shadow: 0 0 28px rgba(127,165,190,0.1); }
 }
 .animate-glow { animation: glow-breathe 3s ease-in-out infinite; }
 
@@ -1019,7 +1019,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   100% { background-position: 200% center; }
 }
 
-::selection { background: rgba(135, 129, 255, 0.3); }
+::selection { background: rgba(127, 165, 190, 0.25); }
 
 /* ═══════════════════════════════════════════════════════════
    Upload Dropzone
@@ -1031,15 +1031,15 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   justify-content: center;
   padding: 2.5rem;
   border-radius: 2rem;
-  border: 2px dashed rgba(196, 192, 255, 0.2);
-  background: rgba(31, 31, 31, 0.5);
+  border: 2px dashed rgba(127, 165, 190, 0.18);
+  background: rgba(23, 27, 30, 0.5);
   cursor: pointer;
   transition: all 0.3s ease;
 }
 .upload-dropzone:hover {
-  border-color: rgba(196, 192, 255, 0.4);
-  background: rgba(31, 31, 31, 0.8);
-  box-shadow: 0 0 30px rgba(196, 192, 255, 0.05);
+  border-color: rgba(127, 165, 190, 0.3);
+  background: rgba(23, 27, 30, 0.8);
+  box-shadow: none;
 }
 
 .upload-editor {
@@ -1058,8 +1058,8 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   transition: border-color 0.2s ease;
 }
 .upload-editor:focus {
-  border-color: rgba(196, 192, 255, 0.4);
-  box-shadow: 0 0 12px rgba(196, 192, 255, 0.08);
+  border-color: rgba(127, 165, 190, 0.3);
+  box-shadow: none;
 }
 .upload-editor::placeholder { color: var(--outline); }
 
@@ -1088,7 +1088,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   vertical-align: top;
 }
 .incident-table tr:hover td {
-  background: rgba(196, 192, 255, 0.03);
+  background: rgba(127, 165, 190, 0.03);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1103,7 +1103,6 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--surface
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(255, 180, 171, 0.04) 0%, transparent 70%),
-              radial-gradient(ellipse 60% 50% at 30% 60%, rgba(196, 192, 255, 0.05) 0%, transparent 70%);
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(127, 165, 190, 0.03) 0%, transparent 70%);
   pointer-events: none;
 }

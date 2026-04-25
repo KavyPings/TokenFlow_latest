@@ -16,7 +16,7 @@ export default function LandingPage({ onEnter }) {
           {/* Mission badge */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-8"
-              style={{ background: 'rgba(196,192,255,0.08)', border: '1px solid rgba(196,192,255,0.2)' }}>
+              style={{ background: 'rgba(127,165,190,0.06)', border: '1px solid rgba(127,165,190,0.15)' }}>
               <span className="w-2 h-2 rounded-full animate-pulse-subtle" style={{ background: 'var(--primary)' }} />
               <span className="text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: 'var(--primary)' }}>
                 AI Safety & Fairness Platform
@@ -44,35 +44,33 @@ export default function LandingPage({ onEnter }) {
             className="flex flex-wrap justify-center gap-3 mb-4">
             <button
               onClick={() => onEnter('enterprise')}
-              className="relative overflow-hidden rounded-2xl px-8 py-4 text-sm font-bold uppercase tracking-[0.12em]"
+              className="inline-flex items-center gap-2.5 rounded-xl px-7 py-3.5 text-sm font-bold uppercase tracking-[0.1em]"
               style={{
-                background: 'linear-gradient(135deg, rgba(120,100,220,0.95), rgba(80,60,180,0.9))',
-                border: '1px solid rgba(196,192,255,0.4)',
-                color: '#fff',
-                boxShadow: '0 0 50px rgba(196,192,255,0.2), 0 8px 32px rgba(0,0,0,0.3)',
+                background: 'var(--primary-container)',
+                border: '1px solid rgba(127,165,190,0.25)',
+                color: 'var(--on-surface)',
+                boxShadow: 'none',
+                transition: 'all 0.2s ease',
               }}
             >
-              <span className="relative z-10 flex items-center gap-2.5 justify-center">
-                <M icon="domain" style={{ fontSize: 20 }} />
-                Enterprise Audit
-                <span className="text-xs font-normal opacity-85 normal-case tracking-normal">— upload & analyze</span>
-              </span>
+              <M icon="domain" style={{ fontSize: 18 }} />
+              Enterprise Audit
+              <span className="text-xs font-normal opacity-80 normal-case tracking-normal">— upload &amp; analyze</span>
             </button>
             <button
               onClick={() => onEnter('fairness')}
-              className="relative overflow-hidden rounded-2xl px-8 py-4 text-sm font-bold uppercase tracking-[0.12em]"
+              className="inline-flex items-center gap-2.5 rounded-xl px-7 py-3.5 text-sm font-bold uppercase tracking-[0.1em]"
               style={{
-                background: 'linear-gradient(135deg, rgba(20,160,210,0.9), rgba(10,120,180,0.85))',
-                border: '1px solid rgba(20,209,255,0.35)',
-                color: '#fff',
-                boxShadow: '0 0 50px rgba(20,209,255,0.15), 0 8px 32px rgba(0,0,0,0.3)',
+                background: 'var(--surface-container-high)',
+                border: '1px solid rgba(46,59,68,0.35)',
+                color: 'var(--on-surface-variant)',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                transition: 'all 0.2s ease',
               }}
             >
-              <span className="relative z-10 flex items-center gap-2.5 justify-center">
-                <M icon="balance" style={{ fontSize: 20 }} />
-                Fairness Audit
-                <span className="text-xs font-normal opacity-85 normal-case tracking-normal">— detect bias</span>
-              </span>
+              <M icon="balance" style={{ fontSize: 18 }} />
+              Fairness Audit
+              <span className="text-xs font-normal opacity-80 normal-case tracking-normal">— detect bias</span>
             </button>
           </motion.div>
 
@@ -189,7 +187,7 @@ export default function LandingPage({ onEnter }) {
       <section className="mb-12">
         <div className="card p-6">
           <div className="flex items-center gap-3 mb-5">
-            <div className="p-2.5 rounded-xl" style={{ background: 'rgba(166,230,255,0.1)' }}>
+            <div className="p-2.5 rounded-xl" style={{ background: 'rgba(127,165,190,0.06)' }}>
               <M icon="widgets" style={{ fontSize: 22, color: 'var(--secondary)' }} />
             </div>
             <div>
@@ -248,7 +246,7 @@ export default function LandingPage({ onEnter }) {
           <div className="text-center">
             <button onClick={() => onEnter('enterprise')}
               className="btn-primary px-8 py-3 text-sm"
-              style={{ boxShadow: '0 0 40px rgba(196,192,255,0.15)' }}>
+              style={{ boxShadow: 'none' }}>
               <M icon="play_arrow" style={{ fontSize: 20 }} />
               Start Enterprise Audit
             </button>

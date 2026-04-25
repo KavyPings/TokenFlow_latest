@@ -27,11 +27,11 @@ function ParticleCanvas() {
     let W = canvas.width = window.innerWidth;
     let H = canvas.height = window.innerHeight;
     let mouse = { x: W / 2, y: H / 2 };
-    const N = 80;
+    const N = 200;
     const pts = Array.from({ length: N }, () => ({
       x: Math.random() * W, y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
-      r: Math.random() * 1.5 + 0.5,
+      vx: (Math.random() - 0.5) * 0.28, vy: (Math.random() - 0.5) * 0.28,
+      r: Math.random() * 1.4 + 0.4,
     }));
     const onMove = (e) => { mouse.x = e.clientX; mouse.y = e.clientY; };
     window.addEventListener('mousemove', onMove);
@@ -50,7 +50,7 @@ function ParticleCanvas() {
         if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(196,192,255,0.35)';
+        ctx.fillStyle = 'rgba(127,165,190,0.16)';
         ctx.fill();
       });
       for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
@@ -60,8 +60,8 @@ function ParticleCanvas() {
           ctx.beginPath();
           ctx.moveTo(pts[i].x, pts[i].y);
           ctx.lineTo(pts[j].x, pts[j].y);
-          ctx.strokeStyle = `rgba(196,192,255,${0.06 * (1 - d / 100)})`;
-          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = `rgba(127,165,190,${0.035 * (1 - d / 100)})`;
+          ctx.lineWidth = 0.4;
           ctx.stroke();
         }
       }
