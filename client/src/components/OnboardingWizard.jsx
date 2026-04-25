@@ -60,7 +60,7 @@ const STEPS = [
     id: 'security',
     icon: 'security',
     color: 'var(--primary)',
-    bg: 'rgba(196,192,255,0.1)',
+    bg: 'rgba(127,165,190,0.1)',
     title: 'Workflow Security & Token Controls',
     content: (
       <div className="space-y-4">

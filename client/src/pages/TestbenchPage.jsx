@@ -134,9 +134,9 @@ export default function TestbenchPage() {
       </div>
 
       {/* ── Key Insight Banner ── */}
-      <div className="card p-5 mb-6" style={{ borderColor: 'rgba(196,192,255,0.2)', background: 'rgba(196,192,255,0.04)' }}>
+      <div className="card p-5 mb-6" style={{ borderColor: 'rgba(127,165,190,0.2)', background: 'rgba(127,165,190,0.04)' }}>
         <div className="flex items-start gap-4">
-          <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: 'rgba(196,192,255,0.1)' }}>
+          <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: 'rgba(127,165,190,0.1)' }}>
             <M icon="lightbulb" style={{ fontSize: 20, color: 'var(--primary)' }} />
           </div>
           <div>
@@ -338,7 +338,7 @@ export default function TestbenchPage() {
                       gridTemplateColumns: '28px 2fr 0.8fr 0.7fr 0.6fr 0.6fr 0.5fr 28px',
                       background: result.status === 'passed' ? 'var(--surface-container-high)' : 'rgba(255,180,171,0.04)',
                       border: result.status === 'passed' ? '1px solid rgba(70,69,85,0.12)' : '1px solid rgba(255,180,171,0.15)',
-                      '--tw-ring-color': 'rgba(196,192,255,0.3)',
+                      '--tw-ring-color': 'rgba(127,165,190,0.3)',
                     }}
                     onClick={() => setExpandedRun(isExpanded ? null : (result.runId || result.id))}
                   >

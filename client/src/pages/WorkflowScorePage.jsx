@@ -173,7 +173,7 @@ export default function WorkflowScorePage() {
             width: 40,
             height: 40,
             borderRadius: '50%',
-            border: '3px solid rgba(196,192,255,0.2)',
+            border: '3px solid rgba(127,165,190,0.2)',
             borderTopColor: 'var(--primary)',
             animation: 'spin 0.8s linear infinite',
           }}

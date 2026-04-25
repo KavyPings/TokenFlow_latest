@@ -376,8 +376,8 @@ export default function FairnessPage() {
           <button key={t.id} onClick={() => setTab(t.id)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all flex-shrink-0"
             style={{
-              background: tab === t.id ? 'rgba(196,192,255,0.14)' : 'transparent',
-              border: tab === t.id ? '1px solid rgba(196,192,255,0.3)' : '1px solid transparent',
+              background: tab === t.id ? 'rgba(127,165,190,0.14)' : 'transparent',
+              border: tab === t.id ? '1px solid rgba(127,165,190,0.3)' : '1px solid transparent',
               color: tab === t.id ? 'var(--primary)' : 'var(--on-surface-variant)',
             }}>
             <M icon={t.icon} style={{ fontSize: 16 }} /> {t.label}
@@ -400,8 +400,8 @@ export default function FairnessPage() {
                   <button key={ds.id} onClick={() => { setActiveDatasetId(ds.id); setTab('results'); }}
                     className="w-full text-left p-2.5 rounded-xl transition-all"
                     style={{
-                      background: ds.id === activeDatasetId ? 'rgba(196,192,255,0.12)' : 'var(--surface-container-high)',
-                      border: ds.id === activeDatasetId ? '1px solid rgba(196,192,255,0.3)' : '1px solid rgba(70,69,85,0.1)',
+                      background: ds.id === activeDatasetId ? 'rgba(127,165,190,0.12)' : 'var(--surface-container-high)',
+                      border: ds.id === activeDatasetId ? '1px solid rgba(127,165,190,0.3)' : '1px solid rgba(70,69,85,0.1)',
                     }}>
                     <p className="text-xs font-bold truncate">{ds.name}</p>
                     <div className="flex items-center gap-2 mt-1">
@@ -431,7 +431,7 @@ export default function FairnessPage() {
               </button>
               {activeDataset.status === 'analyzed' && (
                 <button onClick={handleMitigate} disabled={busy === 'mitigate' || busy === 'analyze'}
-                  className="btn-ghost w-full mt-2 py-2 text-xs" style={{ borderColor: 'rgba(196,192,255,0.2)' }}>
+                  className="btn-ghost w-full mt-2 py-2 text-xs" style={{ borderColor: 'rgba(127,165,190,0.2)' }}>
                   <M icon="healing" style={{ fontSize: 16 }} />
                   {busy === 'mitigate' ? 'Mitigating…' : 'Run Mitigation'}
                 </button>
@@ -596,7 +596,7 @@ function UploadTab({ onComplete, setError }) {
             <button
               onClick={() => setShowGuide(true)}
               className="btn-ghost text-[10px] py-1.5 px-2.5"
-              style={{ borderColor: 'rgba(196,192,255,0.25)' }}
+              style={{ borderColor: 'rgba(127,165,190,0.25)' }}
               type="button"
             >
               <M icon="help" style={{ fontSize: 14 }} />
@@ -708,7 +708,7 @@ function UploadTab({ onComplete, setError }) {
             className="card p-0 w-full max-w-4xl max-h-[88vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b" style={{ borderColor: 'rgba(196,192,255,0.16)', background: 'rgba(196,192,255,0.05)' }}>
+            <div className="p-4 border-b" style={{ borderColor: 'rgba(127,165,190,0.16)', background: 'rgba(127,165,190,0.05)' }}>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-bold uppercase tracking-[0.1em] font-headline">
                   Fairness Dataset Format & Workflow Guide
@@ -731,8 +731,8 @@ function UploadTab({ onComplete, setError }) {
                     onClick={() => setGuideSection(s.id)}
                     className="btn-ghost text-[10px] py-1.5 px-2.5"
                     style={{
-                      borderColor: guideSection === s.id ? 'rgba(196,192,255,0.4)' : 'rgba(196,192,255,0.18)',
-                      background: guideSection === s.id ? 'rgba(196,192,255,0.16)' : 'transparent',
+                      borderColor: guideSection === s.id ? 'rgba(127,165,190,0.4)' : 'rgba(127,165,190,0.18)',
+                      background: guideSection === s.id ? 'rgba(127,165,190,0.16)' : 'transparent',
                       color: guideSection === s.id ? 'var(--primary)' : 'var(--on-surface-variant)',
                     }}
                   >
@@ -816,7 +816,7 @@ function UploadTab({ onComplete, setError }) {
                     'Download mitigated dataset and re-validate in your model workflow before deployment.',
                   ].map((step, i) => (
                     <div key={i} className="card p-4 flex items-start gap-3" style={{ background: 'var(--surface-container-high)' }}>
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold" style={{ background: 'rgba(196,192,255,0.18)', color: 'var(--primary)' }}>{i + 1}</span>
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold" style={{ background: 'rgba(127,165,190,0.18)', color: 'var(--primary)' }}>{i + 1}</span>
                       <p>{step}</p>
                     </div>
                   ))}
@@ -827,7 +827,7 @@ function UploadTab({ onComplete, setError }) {
         </div>
       )}
 
-      <div className="card p-4" style={{ background: 'rgba(196,192,255,0.05)', borderColor: 'rgba(196,192,255,0.2)' }}>
+      <div className="card p-4" style={{ background: 'rgba(127,165,190,0.05)', borderColor: 'rgba(127,165,190,0.2)' }}>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-xs font-bold" style={{ color: 'var(--on-surface)' }}>
             Need a working demo dataset for fairness + mitigation?
@@ -1062,7 +1062,7 @@ function AiReportCard({ datasetId }) {
   }
 
   return (
-    <div className="card p-5" style={{ borderColor: 'rgba(196,192,255,0.18)', background: 'rgba(196,192,255,0.04)' }}>
+    <div className="card p-5" style={{ borderColor: 'rgba(127,165,190,0.18)', background: 'rgba(127,165,190,0.04)' }}>
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -1103,7 +1103,7 @@ function AiReportCard({ datasetId }) {
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-center gap-2 mb-3">
             <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest" style={{
-              background: result.ai_powered ? 'rgba(196,192,255,0.15)' : 'rgba(70,69,85,0.2)',
+              background: result.ai_powered ? 'rgba(127,165,190,0.15)' : 'rgba(70,69,85,0.2)',
               color: result.ai_powered ? 'var(--primary)' : 'var(--outline)',
             }}>
               {result.ai_powered ? `✦ Gemini Flash` : 'Deterministic Template'}
@@ -1152,7 +1152,7 @@ function MitigationTab({ mitigationReport, activeDataset, mitigatedDatasetLinks 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
       {/* Summary banner */}
-      <div className="card p-5" style={{ background: 'rgba(196,192,255,0.08)', borderColor: 'rgba(196,192,255,0.2)' }}>
+      <div className="card p-5" style={{ background: 'rgba(127,165,190,0.08)', borderColor: 'rgba(127,165,190,0.2)' }}>
         <div className="flex items-center gap-3">
           <M icon="healing" style={{ fontSize: 28, color: 'var(--primary)' }} />
           <div>
@@ -1210,7 +1210,7 @@ function MitigationTab({ mitigationReport, activeDataset, mitigatedDatasetLinks 
               href={jsonDownloadUrl}
               download
               className="btn-ghost text-xs py-2 px-3"
-              style={{ borderColor: 'rgba(196,192,255,0.22)' }}
+              style={{ borderColor: 'rgba(127,165,190,0.22)' }}
             >
               <M icon="download" style={{ fontSize: 14 }} />
               Download Mitigated JSON
@@ -1452,7 +1452,7 @@ function AuditTab({ trail }) {
 function StepHeader({ step, title, icon }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold" style={{ background: 'rgba(196,192,255,0.12)', color: 'var(--primary)' }}>{step}</div>
+      <div className="flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold" style={{ background: 'rgba(127,165,190,0.12)', color: 'var(--primary)' }}>{step}</div>
       <div className="flex items-center gap-2">
         <M icon={icon} style={{ fontSize: 16, color: 'var(--primary)' }} />
         <h3 className="text-sm font-bold font-headline">{title}</h3>
@@ -1495,12 +1495,12 @@ function FieldSelect({ label, value, onChange, options, placeholder }) {
 
 function StatusChip({ status }) {
   const map = {
-    uploaded: { bg: 'rgba(196,192,255,0.1)', color: 'var(--primary)' },
+    uploaded: { bg: 'rgba(127,165,190,0.1)', color: 'var(--primary)' },
     profiled: { bg: 'rgba(166,230,255,0.1)', color: 'var(--secondary)' },
     analyzed: { bg: 'rgba(52,211,153,0.1)', color: 'var(--success)' },
     error: { bg: 'rgba(255,180,171,0.1)', color: 'var(--error)' },
     open: { bg: 'rgba(251,191,36,0.1)', color: 'var(--warning)' },
-    acknowledged: { bg: 'rgba(196,192,255,0.1)', color: 'var(--primary)' },
+    acknowledged: { bg: 'rgba(127,165,190,0.1)', color: 'var(--primary)' },
     resolved: { bg: 'rgba(52,211,153,0.1)', color: 'var(--success)' },
     dismissed: { bg: 'rgba(70,69,85,0.1)', color: 'var(--outline)' },
   };

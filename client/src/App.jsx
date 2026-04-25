@@ -429,7 +429,7 @@ export default function App() {
               className="flex items-start gap-2.5 px-4 py-3 rounded-2xl shadow-xl"
               style={{
                 background: t.type === 'error' ? 'rgba(55,15,15,0.97)' : t.type === 'warning' ? 'rgba(45,35,0,0.97)' : 'rgba(18,18,32,0.97)',
-                border: t.type === 'error' ? '1px solid rgba(255,100,100,0.35)' : t.type === 'warning' ? '1px solid rgba(251,191,36,0.35)' : '1px solid rgba(196,192,255,0.2)',
+                border: t.type === 'error' ? '1px solid rgba(255,100,100,0.35)' : t.type === 'warning' ? '1px solid rgba(251,191,36,0.35)' : '1px solid rgba(127,165,190,0.25)',
                 backdropFilter: 'blur(20px)',
               }}
             >
@@ -700,7 +700,7 @@ function DashboardPage({
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <div className="mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4" style={{ background: 'rgba(196,192,255,0.08)', border: '1px solid rgba(196,192,255,0.2)' }}>
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4" style={{ background: 'rgba(127,165,190,0.08)', border: '1px solid rgba(127,165,190,0.2)' }}>
           <span className="w-1.5 h-1.5 rounded-full animate-pulse-subtle" style={{ background: 'var(--primary)' }} />
           <span className="text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: 'var(--primary)' }}>Mission Control</span>
         </div>
@@ -720,7 +720,7 @@ function DashboardPage({
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg" style={{ background: 'rgba(196,192,255,0.12)' }}><M icon="hub" style={{ fontSize: 16, color: 'var(--primary)' }} /></div>
+              <div className="p-1.5 rounded-lg" style={{ background: 'rgba(127,165,190,0.12)' }}><M icon="hub" style={{ fontSize: 16, color: 'var(--primary)' }} /></div>
               <p className="text-xs font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--primary)' }}>Workflow Management</p>
             </div>
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: runningWf.length ? 'rgba(52,211,153,0.12)' : 'rgba(70,69,85,0.15)', color: runningWf.length ? 'var(--success)' : 'var(--outline)' }}>
@@ -834,7 +834,7 @@ function DashboardPage({
         <div className="flex items-center gap-2 mb-5"><M icon="menu_book" style={{ color: 'var(--primary)', fontSize: 18 }} /><h3 className="text-sm font-bold uppercase tracking-[0.15em]">How to Use TokenFlow</h3></div>
         <div className="grid md:grid-cols-2 gap-4">
           {[
-            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(196,192,255,0.08)', title: 'Workflow Management', steps: ['Click "Workflow Management" in the top menu', 'Choose a test scenario in Mock Workflows and hit Start', 'Or upload your own workflow JSON in Uploaded Workflows', 'Watch each step happen in the Token Chain tab', 'See your safety grade in Workflow Score'] },
+            { icon: 'play_arrow', color: 'var(--primary)', bg: 'rgba(127,165,190,0.08)', title: 'Workflow Management', steps: ['Click "Workflow Management" in the top menu', 'Choose a test scenario in Mock Workflows and hit Start', 'Or upload your own workflow JSON in Uploaded Workflows', 'Watch each step happen in the Token Chain tab', 'See your safety grade in Workflow Score'] },
             { icon: 'balance', color: 'var(--secondary)', bg: 'rgba(20,209,255,0.08)', title: 'Dataset Management', steps: ['Click "Dataset Management" in the top menu', 'Upload a CSV or JSON dataset in the Fairness tab', 'Map your columns and add the groups you want to check (like gender)', 'Click "Run Analysis" to see if the AI is being fair', 'Check your compliance grade in the Score tab'] },
             { icon: 'shield', color: 'var(--error)', bg: 'rgba(255,180,171,0.08)', title: 'Monitor', steps: ['Click "Monitor" to see your live dashboard', 'The Overview shows how many workflows are running', 'Switch to Security Review to handle any flagged AI actions', 'Approve safe actions or permanently block suspicious ones'] },
             { icon: 'domain', color: 'var(--success)', bg: 'rgba(52,211,153,0.08)', title: 'Enterprise Audit', steps: ['Click "Enterprise Audit" in the top menu', 'Upload both a workflow and a dataset', 'Get an AI-powered analysis of your files', 'Run security and fairness checks in one place', 'Download a combined compliance report'] },
@@ -899,8 +899,8 @@ function ChainTab({ chainNodes, currentWorkflow, workflows, selectedWorkflowId, 
             <button key={w.id} onClick={() => setSelectedWorkflowId(w.id)}
               className="flex-shrink-0 px-3 py-1.5 rounded-xl text-[10px] font-bold font-mono transition-all"
               style={{
-                background: w.id === selectedWorkflowId ? 'rgba(196,192,255,0.15)' : 'var(--surface-container-high)',
-                border: w.id === selectedWorkflowId ? '1px solid rgba(196,192,255,0.35)' : '1px solid rgba(70,69,85,0.15)',
+                background: w.id === selectedWorkflowId ? 'rgba(127,165,190,0.15)' : 'var(--surface-container-high)',
+                border: w.id === selectedWorkflowId ? '1px solid rgba(127,165,190,0.35)' : '1px solid rgba(70,69,85,0.15)',
                 color: w.id === selectedWorkflowId ? 'var(--primary)' : 'var(--on-surface-variant)',
               }}>
               {w.name ? w.name.slice(0, 24) + (w.name.length > 24 ? '…' : '') : w.id.slice(0, 18) + '…'} <StatusPill status={w.status} small />
@@ -986,7 +986,7 @@ function ChainTab({ chainNodes, currentWorkflow, workflows, selectedWorkflowId, 
                       <StatusPill status={node.status} small />
                     </div>
                     <div className="flex items-center gap-2 mb-1.5">
-                      <div className="p-1.5 rounded-lg" style={{ background: isError ? 'rgba(255,180,171,0.1)' : 'rgba(196,192,255,0.08)' }}>
+                      <div className="p-1.5 rounded-lg" style={{ background: isError ? 'rgba(255,180,171,0.1)' : 'rgba(127,165,190,0.08)' }}>
                         <M icon={meta.msym || 'help'} style={{ fontSize: 15, color: isError ? 'var(--error)' : 'var(--primary)' }} />
                       </div>
                       <div>
@@ -1085,7 +1085,7 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }
   return (
     <div className="max-w-2xl mx-auto">
       <div className="text-center mb-10">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-container))', boxShadow: '0 0 30px rgba(196,192,255,0.2)' }}>
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-container))', boxShadow: '0 0 30px rgba(127,165,190,0.2)' }}>
           <M icon="play_arrow" style={{ fontSize: 32, color: 'var(--on-primary)' }} />
         </div>
         <h2 className="text-2xl font-bold font-headline tracking-tight">Mock Workflows</h2>
@@ -1105,8 +1105,8 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }
                 className="w-full text-left p-5 rounded-[2rem] transition-all"
                 style={{
                   background: t.id === selectedTask ? 'var(--surface-container)' : 'var(--surface-container-low)',
-                  border: t.id === selectedTask ? '2px solid rgba(196,192,255,0.4)' : '2px solid rgba(70,69,85,0.1)',
-                  boxShadow: t.id === selectedTask ? '0 0 20px rgba(196,192,255,0.08)' : 'none',
+                  border: t.id === selectedTask ? '2px solid rgba(127,165,190,0.4)' : '2px solid rgba(70,69,85,0.1)',
+                  boxShadow: t.id === selectedTask ? '0 0 20px rgba(127,165,190,0.08)' : 'none',
                 }}
               >
                 <div className="flex items-start gap-4">
@@ -1148,7 +1148,7 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }
         })}
       </div>
 
-      <button onClick={onStart} disabled={busyAction === 'start'} className="btn-primary w-full py-4 text-sm" style={{ boxShadow: '0 0 30px rgba(196,192,255,0.3)' }}>
+      <button onClick={onStart} disabled={busyAction === 'start'} className="btn-primary w-full py-4 text-sm" style={{ boxShadow: '0 0 30px rgba(127,165,190,0.3)' }}>
         <M icon="play_arrow" style={{ fontSize: 20 }} /> {busyAction === 'start' ? 'Starting Execution…' : 'Start Secure Execution'}
       </button>
       {sel && (
@@ -1231,14 +1231,14 @@ function UploadedWorkflowsTab({ onRunUploadedWorkflow }) {
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadBusy}
             className="btn-ghost w-full py-3 text-xs"
-            style={{ borderStyle: 'dashed', borderColor: 'rgba(196,192,255,0.25)' }}
+            style={{ borderStyle: 'dashed', borderColor: 'rgba(127,165,190,0.25)' }}
           >
             <M icon="folder_open" style={{ fontSize: 16 }} />
             {uploadBusy ? 'Uploading…' : 'Browse JSON file…'}
           </button>
         ) : (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: 'rgba(196,192,255,0.08)', border: '1px solid rgba(196,192,255,0.2)' }}>
+            <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: 'rgba(127,165,190,0.08)', border: '1px solid rgba(127,165,190,0.2)' }}>
               <M icon="description" style={{ fontSize: 14, color: 'var(--primary)' }} />
               <span className="text-xs font-bold flex-1 truncate">{uploadedWfName}</span>
               <button onClick={() => { setUploadedWfId(null); setUploadedWfName(''); }} style={{ color: 'var(--outline)', fontSize: 12 }}>✕</button>
@@ -1488,7 +1488,7 @@ function SecurityPage({ currentReview, reviewQueue, workflows, selectedWorkflowI
               <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <h3 className="text-lg font-bold font-headline">Selected Workflow Detail</h3>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-[0.18em]"
-                  style={{ background: 'rgba(196,192,255,0.08)', color: selectedStatusTone, border: `1px solid color-mix(in srgb, ${selectedStatusTone} 35%, transparent)` }}>
+                  style={{ background: 'rgba(127,165,190,0.08)', color: selectedStatusTone, border: `1px solid color-mix(in srgb, ${selectedStatusTone} 35%, transparent)` }}>
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: selectedStatusTone }} />
                   {selectedWorkflow.status}
                 </span>
@@ -1595,7 +1595,7 @@ function SecurityPage({ currentReview, reviewQueue, workflows, selectedWorkflowI
               return (
                 <motion.div key={w.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.04 }}
                   className="flex items-center gap-4 p-3 rounded-xl cursor-pointer"
-                  style={{ background: isSelected ? 'rgba(196,192,255,0.08)' : hasFlagged || isAborted ? 'rgba(255,180,171,0.04)' : 'var(--surface-container-high)', border: isSelected ? '1px solid rgba(196,192,255,0.28)' : hasFlagged || isAborted ? '1px solid rgba(255,180,171,0.15)' : '1px solid rgba(70,69,85,0.1)' }}
+                  style={{ background: isSelected ? 'rgba(127,165,190,0.08)' : hasFlagged || isAborted ? 'rgba(255,180,171,0.04)' : 'var(--surface-container-high)', border: isSelected ? '1px solid rgba(127,165,190,0.28)' : hasFlagged || isAborted ? '1px solid rgba(255,180,171,0.15)' : '1px solid rgba(70,69,85,0.1)' }}
                   onClick={() => inspectWorkflow(w.id)}
                 >
                   <div className="flex-1 min-w-0">

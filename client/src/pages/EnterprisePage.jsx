@@ -31,7 +31,7 @@ function FormatHelpDialog({ open, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} onClick={e => e.stopPropagation()}
-        className="card" style={{ maxWidth: 720, width: '95vw', maxHeight: '85vh', overflow: 'auto', padding: 28, borderColor: 'rgba(196,192,255,0.25)' }}>
+        className="card" style={{ maxWidth: 720, width: '95vw', maxHeight: '85vh', overflow: 'auto', padding: 28, borderColor: 'rgba(127,165,190,0.25)' }}>
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-[0.12em]">How to Format Your Files</h2>
@@ -43,7 +43,7 @@ function FormatHelpDialog({ open, onClose }) {
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-2"><M icon="code" style={{ fontSize: 14, color: 'var(--primary)' }} /><p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--primary)' }}>Workflow File (.json)</p></div>
           <p className="text-[11px] mb-2" style={{ color: 'var(--on-surface-variant)' }}>A workflow describes the steps your AI agent will take. Each step says what it wants to do, which service it needs, and what data it is working with. Copy and edit this template:</p>
-          <pre className="p-4 rounded-xl text-[11px] overflow-x-auto leading-relaxed" style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.12)', color: 'var(--on-surface-variant)' }}>{`{
+          <pre className="p-4 rounded-xl text-[11px] overflow-x-auto leading-relaxed" style={{ background: 'var(--surface-container)', border: '1px solid rgba(127,165,190,0.12)', color: 'var(--on-surface-variant)' }}>{`{
   "name": "Loan Processing Pipeline",
   "description": "Reads applicant data and scores credit risk",
   "steps": [
@@ -198,7 +198,7 @@ export default function EnterprisePage() {
           {savedAudits.length > 0 && (
             <select value={selectedAuditId} onChange={(e) => { if (e.target.value) loadAudit(e.target.value); }}
               className="rounded-lg px-3 py-1.5 text-[11px]"
-              style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.15)', color: 'var(--on-surface)', maxWidth: 200 }}>
+              style={{ background: 'var(--surface-container)', border: '1px solid rgba(127,165,190,0.15)', color: 'var(--on-surface)', maxWidth: 200 }}>
               <option value="">Load saved audit…</option>
               {savedAudits.map(a => <option key={a.id} value={a.id}>{a.name} ({new Date(a.created_at).toLocaleDateString()})</option>)}
             </select>
@@ -377,9 +377,9 @@ function UploadContextTab({
           <input type="text" placeholder="e.g., Q2 2026 Loan Pipeline Audit"
             value={auditName} onChange={e => setAuditName(e.target.value)}
             className="w-full rounded-lg px-3 py-2 text-xs"
-            style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.15)', color: 'var(--on-surface)' }} />
+            style={{ background: 'var(--surface-container)', border: '1px solid rgba(127,165,190,0.15)', color: 'var(--on-surface)' }} />
         </div>
-        <button onClick={() => setShowFormatHelp(true)} className="btn-ghost px-3 py-2 text-[11px] flex-shrink-0 mt-4" style={{ borderColor: 'rgba(196,192,255,0.2)' }}>
+        <button onClick={() => setShowFormatHelp(true)} className="btn-ghost px-3 py-2 text-[11px] flex-shrink-0 mt-4" style={{ borderColor: 'rgba(127,165,190,0.2)' }}>
           <M icon="help" style={{ fontSize: 14 }} /> File Formats
         </button>
       </div>
@@ -391,11 +391,11 @@ function UploadContextTab({
         {/* Workflow upload */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-3">
-            <div className="p-1.5 rounded-lg" style={{ background: 'rgba(196,192,255,0.12)' }}><M icon="code" style={{ fontSize: 16, color: 'var(--primary)' }} /></div>
+            <div className="p-1.5 rounded-lg" style={{ background: 'rgba(127,165,190,0.12)' }}><M icon="code" style={{ fontSize: 16, color: 'var(--primary)' }} /></div>
             <h3 className="text-sm font-bold uppercase tracking-[0.1em]">Workflow JSON</h3>
           </div>
           <p className="text-[11px] mb-3" style={{ color: 'var(--on-surface-variant)' }}>Upload your workflow definition (.json) for security analysis.</p>
-          <label className="btn-ghost flex items-center justify-center gap-2 py-3 cursor-pointer w-full rounded-xl text-xs" style={{ border: '1px dashed rgba(196,192,255,0.25)' }}>
+          <label className="btn-ghost flex items-center justify-center gap-2 py-3 cursor-pointer w-full rounded-xl text-xs" style={{ border: '1px dashed rgba(127,165,190,0.25)' }}>
             <M icon="upload_file" style={{ fontSize: 16 }} />{workflowFile ? workflowFile.name : 'Choose JSON file'}
             <input type="file" accept=".json" onChange={handleWorkflowUpload} className="hidden" />
           </label>
@@ -451,7 +451,7 @@ function UploadContextTab({
                   value={datasetConfig.column_mappings[key] || ''}
                   onChange={(e) => setDatasetConfig(prev => ({ ...prev, column_mappings: { ...prev.column_mappings, [key]: e.target.value } }))}
                   className="w-full rounded-lg px-3 py-2 text-xs"
-                  style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.15)', color: 'var(--on-surface)' }}>
+                  style={{ background: 'var(--surface-container)', border: '1px solid rgba(127,165,190,0.15)', color: 'var(--on-surface)' }}>
                   <option value="">—</option>
                   {datasetMeta.columns.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -464,7 +464,7 @@ function UploadContextTab({
               value={datasetConfig.dataset_name}
               onChange={(e) => setDatasetConfig(prev => ({ ...prev, dataset_name: e.target.value }))}
               className="w-full rounded-lg px-3 py-2 text-xs"
-              style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.15)', color: 'var(--on-surface)' }} />
+              style={{ background: 'var(--surface-container)', border: '1px solid rgba(127,165,190,0.15)', color: 'var(--on-surface)' }} />
           </div>
           {/* Protected attributes — multiple */}
           <div>
@@ -481,7 +481,7 @@ function UploadContextTab({
                     value={attr.column || ''}
                     onChange={(e) => updateProtectedAttribute(idx, 'column', e.target.value)}
                     className="flex-1 rounded-lg px-3 py-2 text-xs"
-                    style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.15)', color: 'var(--on-surface)' }}>
+                    style={{ background: 'var(--surface-container)', border: '1px solid rgba(127,165,190,0.15)', color: 'var(--on-surface)' }}>
                     <option value="">— select column —</option>
                     {datasetMeta.columns.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -489,7 +489,7 @@ function UploadContextTab({
                     value={attr.reference_group || ''}
                     onChange={(e) => updateProtectedAttribute(idx, 'reference_group', e.target.value)}
                     className="flex-1 rounded-lg px-3 py-2 text-xs"
-                    style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.15)', color: 'var(--on-surface)' }} />
+                    style={{ background: 'var(--surface-container)', border: '1px solid rgba(127,165,190,0.15)', color: 'var(--on-surface)' }} />
                   {datasetConfig.protected_attributes.length > 1 && (
                     <button onClick={() => removeProtectedAttribute(idx)} className="btn-ghost p-1.5 flex-shrink-0" style={{ color: 'var(--error)' }}>
                       <M icon="close" style={{ fontSize: 14 }} />
@@ -519,11 +519,11 @@ function UploadContextTab({
 
       {/* Context report */}
       {contextReport && !contextAccepted && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card p-6 mb-6" style={{ borderColor: 'rgba(196,192,255,0.25)' }}>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card p-6 mb-6" style={{ borderColor: 'rgba(127,165,190,0.25)' }}>
           <div className="flex items-center gap-2 mb-4">
             <M icon="auto_awesome" style={{ fontSize: 18, color: 'var(--primary)' }} />
             <h3 className="text-sm font-bold uppercase tracking-[0.1em]">AI Context Analysis</h3>
-            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest ml-auto" style={{ background: 'rgba(196,192,255,0.15)', color: 'var(--primary)' }}>
+            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest ml-auto" style={{ background: 'rgba(127,165,190,0.15)', color: 'var(--primary)' }}>
               {contextReport.ai_powered ? '✦ Gemini' : 'Template'}
             </span>
           </div>
@@ -534,7 +534,7 @@ function UploadContextTab({
           )}
           <div className="grid md:grid-cols-2 gap-4 mb-4">
             {contextReport.workflow_analysis && (
-              <div className="p-4 rounded-xl" style={{ background: 'rgba(196,192,255,0.04)', border: '1px solid rgba(196,192,255,0.12)' }}>
+              <div className="p-4 rounded-xl" style={{ background: 'rgba(127,165,190,0.04)', border: '1px solid rgba(127,165,190,0.12)' }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--primary)' }}>Workflow Analysis</p>
                 <p className="text-[11px] mb-2" style={{ color: 'var(--on-surface)' }}>{contextReport.workflow_analysis.purpose}</p>
                 {contextReport.workflow_analysis.risk_areas?.length > 0 && (<div className="mt-2"><p className="text-[9px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--error)' }}>Risk Areas</p><ul className="text-[10px] space-y-0.5" style={{ color: 'var(--on-surface-variant)' }}>{contextReport.workflow_analysis.risk_areas.map((r, i) => <li key={i}>• {r}</li>)}</ul></div>)}
@@ -630,7 +630,7 @@ function WorkflowSecurityTab({ workflowJson, wfRunning, setWfRunning, wfId, setW
       <div>
         {error && (<div className="p-3 rounded-xl mb-4 text-xs" style={{ background: 'rgba(255,100,100,0.08)', border: '1px solid rgba(255,100,100,0.2)', color: 'var(--error)' }}><M icon="error" style={{ fontSize: 14, verticalAlign: 'middle', marginRight: 6 }} />{error}</div>)}
         <div className="card" style={{ padding: '48px 32px', textAlign: 'center' }}>
-          <div className="inline-flex p-4 rounded-2xl mb-4" style={{ background: 'rgba(196,192,255,0.08)' }}>
+          <div className="inline-flex p-4 rounded-2xl mb-4" style={{ background: 'rgba(127,165,190,0.08)' }}>
             <M icon="security" style={{ fontSize: 48, color: 'var(--primary)' }} />
           </div>
           <h2 className="text-lg font-bold font-headline mb-2">Workflow Security Check</h2>
@@ -682,10 +682,10 @@ function WorkflowSecurityTab({ workflowJson, wfRunning, setWfRunning, wfId, setW
           <div className="space-y-2">{wfChain.map((token, i) => {
             const isFlagged = token.status === 'flagged'; const isBurned = token.status === 'burned';
             return (<motion.div key={token.id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}
-              className="flex items-center gap-3 p-3 rounded-xl" style={{ background: isFlagged ? 'rgba(255,100,100,0.06)' : isBurned ? 'rgba(52,211,153,0.04)' : 'rgba(196,192,255,0.04)', border: `1px solid ${isFlagged ? 'rgba(255,100,100,0.15)' : isBurned ? 'rgba(52,211,153,0.12)' : 'rgba(196,192,255,0.1)'}` }}>
+              className="flex items-center gap-3 p-3 rounded-xl" style={{ background: isFlagged ? 'rgba(255,100,100,0.06)' : isBurned ? 'rgba(52,211,153,0.04)' : 'rgba(127,165,190,0.04)', border: `1px solid ${isFlagged ? 'rgba(255,100,100,0.15)' : isBurned ? 'rgba(52,211,153,0.12)' : 'rgba(127,165,190,0.1)'}` }}>
               <M icon={isFlagged ? 'gpp_bad' : isBurned ? 'check_circle' : 'pending'} style={{ fontSize: 16, color: isFlagged ? 'var(--error)' : isBurned ? 'var(--success)' : 'var(--primary)' }} />
               <div className="flex-1 min-w-0"><p className="text-[11px] font-bold" style={{ color: 'var(--on-surface)' }}>{token.action || token.step_action || `Step ${i + 1}`}</p><p className="text-[10px] font-mono truncate" style={{ color: 'var(--outline)' }}>{token.id}</p></div>
-              <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase" style={{ background: isFlagged ? 'rgba(255,100,100,0.12)' : isBurned ? 'rgba(52,211,153,0.12)' : 'rgba(196,192,255,0.1)', color: isFlagged ? 'var(--error)' : isBurned ? 'var(--success)' : 'var(--primary)' }}>{token.status}</span>
+              <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase" style={{ background: isFlagged ? 'rgba(255,100,100,0.12)' : isBurned ? 'rgba(52,211,153,0.12)' : 'rgba(127,165,190,0.1)', color: isFlagged ? 'var(--error)' : isBurned ? 'var(--success)' : 'var(--primary)' }}>{token.status}</span>
             </motion.div>);
           })}</div>
         )}
@@ -905,7 +905,7 @@ function CombinedReportTab({ contextReport, wfChain, wfStatus, fairnessResult, m
 
   // Past-audit selector bar — always visible at the top
   const selectorBar = (
-    <div className="flex items-center gap-3 mb-5 p-3 rounded-xl" style={{ background: 'rgba(196,192,255,0.05)', border: '1px solid rgba(196,192,255,0.12)' }}>
+    <div className="flex items-center gap-3 mb-5 p-3 rounded-xl" style={{ background: 'rgba(127,165,190,0.05)', border: '1px solid rgba(127,165,190,0.12)' }}>
       <M icon="history" style={{ fontSize: 16, color: 'var(--primary)', flexShrink: 0 }} />
       <div className="flex-1 min-w-0">
         <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: 'var(--on-surface-variant)' }}>Viewing Report</p>
@@ -913,7 +913,7 @@ function CombinedReportTab({ contextReport, wfChain, wfStatus, fairnessResult, m
           value={selectedPastId}
           onChange={e => setSelectedPastId(e.target.value)}
           className="w-full rounded-lg px-3 py-1.5 text-xs"
-          style={{ background: 'var(--surface-container)', border: '1px solid rgba(196,192,255,0.2)', color: 'var(--on-surface)' }}
+          style={{ background: 'var(--surface-container)', border: '1px solid rgba(127,165,190,0.2)', color: 'var(--on-surface)' }}
         >
           <option value="current">⚡ Current Session{auditName ? ` — ${auditName}` : ''}</option>
           {savedAudits.length > 0 && (
@@ -942,7 +942,7 @@ function CombinedReportTab({ contextReport, wfChain, wfStatus, fairnessResult, m
         <h2 className="text-sm font-bold uppercase tracking-[0.12em] mb-4">Combined Enterprise Report</h2>
         {selectorBar}
         <div className="card" style={{ padding: '48px 32px', textAlign: 'center' }}>
-          <div className="inline-flex p-4 rounded-2xl mb-4" style={{ background: 'rgba(196,192,255,0.08)' }}>
+          <div className="inline-flex p-4 rounded-2xl mb-4" style={{ background: 'rgba(127,165,190,0.08)' }}>
             <M icon="summarize" style={{ fontSize: 48, color: 'var(--outline)' }} />
           </div>
           <h2 className="text-lg font-bold font-headline mb-2">No Report Data Yet</h2>

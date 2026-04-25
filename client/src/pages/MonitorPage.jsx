@@ -40,7 +40,7 @@ export default function MonitorPage({ activeTab, onSelectTab, overviewView, secu
       </div>
 
       {/* Contextual explanation bar */}
-      <div className="p-3 rounded-xl mb-5 flex items-start gap-2.5" style={{ background: 'rgba(196,192,255,0.04)', border: '1px solid rgba(196,192,255,0.1)' }}>
+      <div className="p-3 rounded-xl mb-5 flex items-start gap-2.5" style={{ background: 'rgba(127,165,190,0.04)', border: '1px solid rgba(127,165,190,0.1)' }}>
         <M icon={activeTab === 'overview' ? 'info' : 'shield'} style={{ fontSize: 15, color: 'var(--primary)', flexShrink: 0, marginTop: 1 }} />
         <p className="text-[11px] leading-relaxed" style={{ color: 'var(--on-surface-variant)' }}>
           {activeTab === 'overview'

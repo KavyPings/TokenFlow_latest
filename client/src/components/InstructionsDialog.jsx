@@ -27,7 +27,7 @@ export default function InstructionsDialog({
             className="fixed left-1/2 top-1/2 z-70 w-[min(760px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border p-5"
             style={{
               background: 'var(--surface-container)',
-              borderColor: 'rgba(196,192,255,0.2)',
+              borderColor: 'rgba(127,165,190,0.2)',
               boxShadow: '0 16px 60px rgba(0,0,0,0.45)',
               maxHeight: '85vh',
               overflow: 'auto',
@@ -70,7 +70,7 @@ export default function InstructionsDialog({
                         className="text-[10px] leading-relaxed p-3 rounded-xl overflow-auto"
                         style={{
                           background: 'rgba(10,12,24,0.9)',
-                          border: '1px solid rgba(196,192,255,0.2)',
+                          border: '1px solid rgba(127,165,190,0.2)',
                           color: 'var(--on-surface)',
                           maxHeight: '260px',
                         }}

@@ -62,7 +62,7 @@ export default function LandingPage({ onEnter }) {
               className="inline-flex items-center gap-2.5 rounded-xl px-7 py-3.5 text-sm font-bold uppercase tracking-[0.1em]"
               style={{
                 background: 'var(--surface-container-high)',
-                border: '1px solid rgba(46,59,68,0.35)',
+                border: '1px solid rgba(46,59,68,0.45)',
                 color: 'var(--on-surface-variant)',
                 boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
                 transition: 'all 0.2s ease',

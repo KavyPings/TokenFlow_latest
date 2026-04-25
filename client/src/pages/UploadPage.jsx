@@ -169,7 +169,7 @@ export default function UploadPage({ setPage, onRunUploadedWorkflow }) {
       <div className="text-center mb-8">
         <div
           className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl"
-          style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-container))', boxShadow: '0 0 30px rgba(196,192,255,0.2)' }}
+          style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-container))', boxShadow: '0 0 30px rgba(127,165,190,0.2)' }}
         >
           <M icon="upload_file" style={{ fontSize: 32, color: 'var(--on-primary)' }} />
         </div>
@@ -349,8 +349,8 @@ export default function UploadPage({ setPage, onRunUploadedWorkflow }) {
                         onClick={() => setActiveUploadedId(workflow.id)}
                         className="w-full text-left p-3 rounded-xl transition-all"
                         style={{
-                          background: isSelected ? 'rgba(196,192,255,0.1)' : 'var(--surface-container-high)',
-                          border: isSelected ? '1px solid rgba(196,192,255,0.28)' : '1px solid rgba(70,69,85,0.1)',
+                          background: isSelected ? 'rgba(127,165,190,0.1)' : 'var(--surface-container-high)',
+                          border: isSelected ? '1px solid rgba(127,165,190,0.28)' : '1px solid rgba(70,69,85,0.1)',
                         }}
                       >
                         <div className="flex items-start gap-3">
