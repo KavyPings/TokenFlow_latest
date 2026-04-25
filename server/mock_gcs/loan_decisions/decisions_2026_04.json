@@ -1,14 +1,13 @@
 {
-  "decision": "approved_with_conditions",
-  "amount_approved": 25000,
-  "interest_rate": 8.9,
-  "conditions": [
-    "Proof of stable income required",
-    "Co-signer recommended"
+  "decision": "declined",
+  "amount_approved": null,
+  "interest_rate": null,
+  "conditions": [],
+  "decline_reasons": [
+    "Incomplete credit information"
   ],
-  "decline_reasons": [],
-  "decision_letter": "Dear Applicant,\n\nThank you for your loan application. After careful review, we have approved your request for $25,000 at 8.9% APR.\n\nYour TokenFlow-verified decision record is available in your secure portal.",
-  "decided_at": "2026-04-24T08:10:11.118Z",
-  "recommendation": "approve",
+  "decision_letter": "Dear Applicant,\n\nWe regret to inform you that your loan application (ID: APP-001) has been declined at this time. This decision was primarily based on the inability to adequately assess your creditworthiness due to incomplete credit information.\n\nWe encourage you to review your application details and consider reapplying once complete credit information is available for evaluation. We are committed to assisting our applicants and welcome the opportunity to reconsider your application in the future.",
+  "decided_at": "2026-04-25T19:22:24.888Z",
+  "recommendation": "decline",
   "score": null
 }

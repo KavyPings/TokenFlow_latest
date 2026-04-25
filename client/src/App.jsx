@@ -1179,12 +1179,14 @@ function UploadedWorkflowsTab({ onRunUploadedWorkflow }) {
     try {
       const text = await file.text();
       const json = JSON.parse(text);
-      const fd = new FormData();
-      fd.append('workflow', file);
-      const res = await fetch('/api/workflows/upload', { method: 'POST', body: fd });
+      const res = await fetch('/api/workflows/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ definition: json }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message || 'Upload failed');
-      setUploadedWfId(data.uploadedWorkflowId || data.id);
+      setUploadedWfId(data.id);
       setUploadedWfName(json?.name || file.name);
     } catch (err) {
       setUploadError(err.message);

@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, isAbsolute, join, resolve } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,7 +11,8 @@ let db = null;
 export function getDb() {
   if (db) return db;
 
-  const dbPath = process.env.DATABASE_URL;
+  const dbPath = resolveDatabasePath();
+  ensureSqliteDirectory(dbPath);
   db = new Database(dbPath);
 
   // Enable WAL mode for better concurrent performance
@@ -125,6 +126,47 @@ export function getDb() {
 
   console.log('[DB] Database initialized');
   return db;
+}
+
+function resolveDatabasePath() {
+  const configuredPath = (process.env.DATABASE_URL || '').trim();
+  if (!configuredPath) return './tokenflow.db';
+
+  const lowerCasePath = configuredPath.toLowerCase();
+  if (
+    lowerCasePath.startsWith('postgres://') ||
+    lowerCasePath.startsWith('postgresql://') ||
+    lowerCasePath.startsWith('mysql://') ||
+    lowerCasePath.startsWith('mssql://') ||
+    lowerCasePath.startsWith('mongodb://') ||
+    lowerCasePath.startsWith('redis://')
+  ) {
+    console.warn('[DB] Non-SQLite DATABASE_URL detected; falling back to local SQLite at ./tokenflow.db');
+    return './tokenflow.db';
+  }
+
+  return configuredPath;
+}
+
+function ensureSqliteDirectory(dbPath) {
+  if (!dbPath || dbPath === ':memory:' || dbPath.startsWith('file::memory:')) return;
+
+  let filesystemPath = dbPath;
+
+  if (dbPath.startsWith('file:')) {
+    try {
+      filesystemPath = fileURLToPath(dbPath);
+    } catch {
+      return;
+    }
+  }
+
+  const absoluteDbPath = isAbsolute(filesystemPath) ? filesystemPath : resolve(process.cwd(), filesystemPath);
+  const databaseDir = dirname(absoluteDbPath);
+
+  if (!existsSync(databaseDir)) {
+    mkdirSync(databaseDir, { recursive: true });
+  }
 }
 
 function seedVaultCredentials(db) {
