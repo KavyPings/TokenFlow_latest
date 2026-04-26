@@ -218,7 +218,7 @@ export default function IncidentPage() {
             { icon: 'domain', color: 'var(--primary)', title: 'Enterprises', desc: 'HR, finance, and healthcare teams that use ML models to make consequential decisions at scale.' },
             { icon: 'policy', color: 'var(--secondary)', title: 'Compliance Teams', desc: 'Legal and risk officers preparing for GDPR, the EU AI Act, or US EEOC audits.' },
             { icon: 'code', color: 'var(--success)', title: 'ML Engineers', desc: 'Data scientists who need fast, reproducible fairness metrics integrated into their build pipeline.' },
-            { icon: 'school', color: 'var(--warning)', title: 'Researchers', desc: 'Academics studying algorithmic fairness who need a transparent, open testbench.' },
+    { icon: 'school', color: 'var(--warning)', title: 'Researchers', desc: 'Academics studying algorithmic fairness who need transparent, reproducible evaluation tooling.' },
           ].map((item) => (
             <div key={item.title} className="card p-5 card-interactive">
               <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl"

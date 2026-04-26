@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { api, getWebSocketUrl } from './api.js';
 import LandingPage from './pages/LandingPage.jsx';
-import TestbenchPage from './pages/TestbenchPage.jsx';
 import IncidentPage from './pages/IncidentPage.jsx';
 import FairnessPage from './pages/FairnessPage.jsx';
 import ScoringPage from './pages/ScoringPage.jsx';
@@ -197,15 +196,20 @@ export default function App() {
       ws.addEventListener('message', (e) => {
         try {
           const d = JSON.parse(e.data);
-          if (d.type === 'SECURITY_VIOLATION' && d.payload?.workflowType !== 'testbench') {
+          const eventWorkflowId = d?.payload?.workflowId || d?.payload?.workflow_id || d?.payload?.token?.workflow_id;
+          const isActiveWorkflowEvent = Boolean(eventWorkflowId) && eventWorkflowId === selectedWorkflowIdRef.current;
+          if (d.type === 'SECURITY_VIOLATION' && isActiveWorkflowEvent && false) {
             pushToast('Security violation detected — review queue updated.', 'error');
           }
-          if (d.type === 'FAIRNESS_FLAG') {
+          if (d.type === 'SECURITY_VIOLATION' && isActiveWorkflowEvent) {
+            pushToast('Security violation detected - workflow paused for review.', 'error');
+          }
+          if (d.type === 'FAIRNESS_FLAG' && isActiveWorkflowEvent) {
             setFairnessAlert(d.payload);
             pushToast(`Fairness signal: ${d.payload?.applicant || 'applicant'} — human review recommended.`, 'warning');
             setTimeout(() => setFairnessAlert(null), 8000);
           }
-          if (d.type === 'DECISION_MADE') {
+          if (d.type === 'DECISION_MADE' && isActiveWorkflowEvent) {
             pushToast(`Loan decision: ${d.payload?.decision?.toUpperCase() || 'PROCESSED'} for ${d.payload?.applicant || 'applicant'}`, 'info');
           }
         } catch { }
@@ -246,6 +250,10 @@ export default function App() {
       case 'run':
         setPage('run');
         return;
+      case 'workflowScore':
+        setPage('run');
+        setWorkflowSubTab('workflowScore');
+        return;
       case 'dashboard':
         setPage('monitor');
         setMonitorSubTab('overview');
@@ -266,10 +274,6 @@ export default function App() {
       case 'about':
         setPage('about');
         return;
-      case 'testbench':
-        setPage('run');
-        setWorkflowSubTab('testbench');
-        return;
       case 'monitor':
       case 'governance':
       case 'enterprise':
@@ -281,9 +285,11 @@ export default function App() {
     }
   }
 
-  function handleStart() {
+  function handleStart(taskIdOverride = null) {
+    const taskId = taskIdOverride || selectedTask;
+    if (!taskId) return;
     withBusy('start', async () => {
-      const r = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify({ taskId: selectedTask }) });
+      const r = await api('/api/workflows/start', { method: 'POST', body: JSON.stringify({ taskId }) });
       pushToast(`Workflow started — watching token chain.`, 'info');
       setSelectedWorkflowId(r.workflowId);
       await loadDashboard(r.workflowId);
@@ -375,7 +381,7 @@ export default function App() {
   const showRefreshButton = socketState === 'offline' || socketState === 'degraded';
   const normalizedPage =
     page === 'dashboard' || page === 'security' ? 'monitor'
-      : page === 'workflow' || page === 'testbench' ? 'run'
+      : page === 'workflow' ? 'run'
         : page === 'fairness' || page === 'scoring' ? 'governance'
           : page === 'incident' ? 'about'
             : page;
@@ -568,7 +574,7 @@ export default function App() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   PAGE: Workflow Control (Launch | Token Chain | Testbench)
+   PAGE: Workflow Control (Launch | Token Chain | Workflow Score)
    ═══════════════════════════════════════════════════════════ */
 function WorkflowControlPage({
   chainWorkflows, chainNodes, audit,
@@ -584,7 +590,6 @@ function WorkflowControlPage({
     { id: 'launch', label: 'Mock Workflows', msym: 'play_arrow' },
     { id: 'uploads', label: 'Uploaded Workflows', msym: 'upload_file' },
     { id: 'chain', label: 'Token Chain', msym: 'token' },
-    { id: 'testbench', label: 'Testbench', msym: 'science' },
     { id: 'workflowScore', label: 'Workflow Score', msym: 'verified' },
   ];
   return (
@@ -633,11 +638,6 @@ function WorkflowControlPage({
               audit={audit} onKill={onKill} onClearWorkflows={onClearWorkflows} busyAction={busyAction} />
           </motion.div>
         )}
-        {activeTab === 'testbench' && (
-          <motion.div key="testbench" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <TestbenchPage />
-          </motion.div>
-        )}
         {activeTab === 'workflowScore' && (
           <motion.div key="workflow-score" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <WorkflowScorePage />
@@ -655,7 +655,7 @@ function WorkflowControlPage({
             title: 'Mock Workflows — Try pre-built scenarios',
             steps: [
               'Pick a test scenario from the list (like a normal loan process or a simulated attack).',
-              'Click "Start" and watch the system process each step with secure tokens.',
+              'Click "Run this workflow" on any scenario card to execute it immediately.',
               'You\'ll automatically be taken to the Token Chain to see what happened.',
             ],
           },
@@ -675,7 +675,12 @@ function WorkflowControlPage({
               'Workflow Score — Get a safety grade for your workflows based on how they behaved.',
             ],
           },
-        ]}
+        ].map((section) => ({
+          ...section,
+          steps: Array.isArray(section.steps)
+            ? section.steps.filter((step) => !step.startsWith('Testbench'))
+            : section.steps,
+        }))}
       />
     </motion.div>
   );
@@ -753,7 +758,7 @@ function DashboardPage({
             </span>
           </div>
           <div className="space-y-2.5 mb-4">
-            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Review queue</span><span className="font-bold font-mono" style={{ color: interceptCount ? 'var(--error)' : 'var(--on-surface)' }}>{interceptCount} items</span></div>
+            <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Intercept queue</span><span className="font-bold font-mono" style={{ color: interceptCount ? 'var(--error)' : 'var(--on-surface)' }}>{interceptCount} items</span></div>
             <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>Gate mode</span><span className="font-bold" style={{ color: 'var(--on-surface)' }}>shadow</span></div>
             <div className="flex justify-between text-xs"><span style={{ color: 'var(--on-surface-variant)' }}>AI reports</span><span className="font-bold" style={{ color: 'var(--outline)' }}>ready</span></div>
           </div>
@@ -1137,18 +1142,28 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }
                   </div>
                 </div>
               </button>
-              <button
-                onClick={() => downloadMockWorkflow(t)}
-                className="btn-ghost w-full py-2 text-[10px]"
-              >
-                <M icon="download" style={{ fontSize: 14 }} /> Download JSON
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { setSelectedTask(t.id); onStart(t.id); }}
+                  disabled={busyAction === 'start'}
+                  className="btn-primary w-full py-2 text-[10px]"
+                >
+                  <M icon="play_arrow" style={{ fontSize: 14 }} />
+                  {busyAction === 'start' && selectedTask === t.id ? 'Starting...' : 'Run This Workflow'}
+                </button>
+                <button
+                  onClick={() => downloadMockWorkflow(t)}
+                  className="btn-ghost w-full py-2 text-[10px]"
+                >
+                  <M icon="download" style={{ fontSize: 14 }} /> Download JSON
+                </button>
+              </div>
             </div>
           );
         })}
       </div>
 
-      <button onClick={onStart} disabled={busyAction === 'start'} className="btn-primary w-full py-4 text-sm" style={{ boxShadow: '0 0 30px rgba(127,165,190,0.3)' }}>
+      <button onClick={onStart} disabled={busyAction === 'start'} className="hidden btn-primary w-full py-4 text-sm" style={{ boxShadow: '0 0 30px rgba(127,165,190,0.3)' }}>
         <M icon="play_arrow" style={{ fontSize: 20 }} /> {busyAction === 'start' ? 'Starting Execution…' : 'Start Secure Execution'}
       </button>
       {sel && (

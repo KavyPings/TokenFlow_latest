@@ -1,25 +1,23 @@
-import { useEffect, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { api } from '../api.js';
 import InstructionsDialog from '../components/InstructionsDialog.jsx';
 
-/* ─── Material Symbol shortcut ─── */
 const M = ({ icon, className = '', style }) => (
   <span className={`material-symbols-outlined ${className}`} style={style}>{icon}</span>
 );
 
-/* ─── Animated Arc Gauge ─── */
 function ArcGauge({ score, size = 200, strokeWidth = 14 }) {
   const r = (size - strokeWidth) / 2;
   const cx = size / 2;
   const cy = size / 2;
   const circumference = 2 * Math.PI * r;
-  const arc = circumference * 0.75; // 270° sweep
+  const arc = circumference * 0.75;
   const offset = arc - (arc * Math.max(0, Math.min(100, score))) / 100;
 
   const color =
     score >= 80 ? 'var(--success)' :
-    score >= 55 ? 'var(--warning)' : 'var(--error)';
+      score >= 55 ? 'var(--warning)' : 'var(--error)';
 
   const grade =
     score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 65 ? 'C' : score >= 50 ? 'D' : 'F';
@@ -27,7 +25,6 @@ function ArcGauge({ score, size = 200, strokeWidth = 14 }) {
   return (
     <div style={{ position: 'relative', width: size, height: size + 20 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(135deg)' }}>
-        {/* Track */}
         <circle
           cx={cx} cy={cy} r={r}
           fill="none"
@@ -36,7 +33,6 @@ function ArcGauge({ score, size = 200, strokeWidth = 14 }) {
           strokeDasharray={`${arc} ${circumference - arc}`}
           strokeLinecap="round"
         />
-        {/* Value */}
         <motion.circle
           cx={cx} cy={cy} r={r}
           fill="none"
@@ -64,7 +60,7 @@ function ArcGauge({ score, size = 200, strokeWidth = 14 }) {
           {score}
         </span>
         <span style={{ fontSize: 12, color: 'var(--on-surface-variant)', marginTop: 4, fontWeight: 600 }}>
-          COMPLIANCE SCORE
+          DATASET SCORE
         </span>
         <span style={{ fontSize: 22, fontWeight: 800, color, marginTop: 2, fontFamily: 'var(--font-headline)' }}>
           Grade {grade}
@@ -74,7 +70,6 @@ function ArcGauge({ score, size = 200, strokeWidth = 14 }) {
   );
 }
 
-/* ─── Metric Pill ─── */
 function ScoreRow({ label, value, max, unit = '', color, msym, detail }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   const barColor = color === 'success' ? 'var(--success)' : color === 'warning' ? 'var(--warning)' : 'var(--error)';
@@ -112,7 +107,6 @@ function ScoreRow({ label, value, max, unit = '', color, msym, detail }) {
   );
 }
 
-/* ─── Checklist Item ─── */
 function CheckItem({ label, passed, detail }) {
   return (
     <div style={{
@@ -125,11 +119,11 @@ function CheckItem({ label, passed, detail }) {
       background: passed ? 'rgba(52,211,153,0.06)' : 'rgba(248,113,113,0.06)',
       border: `1px solid ${passed ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)'}`,
     }}>
-      <M icon={passed ? 'check_circle' : 'cancel'} style={{ 
-        fontSize: 16, 
-        color: passed ? 'var(--success)' : 'var(--error)', 
-        flexShrink: 0, 
-        marginTop: 1 
+      <M icon={passed ? 'check_circle' : 'cancel'} style={{
+        fontSize: 16,
+        color: passed ? 'var(--success)' : 'var(--error)',
+        flexShrink: 0,
+        marginTop: 1,
       }} />
       <div>
         <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--on-surface)', margin: 0 }}>{label}</p>
@@ -137,6 +131,35 @@ function CheckItem({ label, passed, detail }) {
       </div>
     </div>
   );
+}
+
+function scoreRiskLevel(level) {
+  if (level === 'high') return 25;
+  if (level === 'medium') return 12;
+  return 0;
+}
+
+function mitigationQualityFromDeltas(deltas) {
+  const perAttribute = Object.values(deltas?.per_attribute || {});
+  let improved = 0;
+  let worsened = 0;
+
+  for (const attr of perAttribute) {
+    for (const change of Object.values(attr?.fairness || {})) {
+      const spd = Number(change?.spd_delta || 0);
+      const dir = Number(change?.dir_delta || 0);
+      const eod = Number(change?.eod_delta || 0);
+      const aod = Number(change?.aod_delta || 0);
+
+      if (spd < 0) improved++; else if (spd > 0) worsened++;
+      if (dir > 0) improved++; else if (dir < 0) worsened++;
+      if (eod < 0) improved++; else if (eod > 0) worsened++;
+      if (aod < 0) improved++; else if (aod > 0) worsened++;
+    }
+  }
+
+  if (improved === 0 && worsened === 0) return 55;
+  return Math.max(0, Math.min(100, Math.round(50 + (improved - worsened) * 8)));
 }
 
 export default function ScoringPage() {
@@ -149,15 +172,40 @@ export default function ScoringPage() {
     try {
       setLoading(true);
       setError(null);
-      const [datasetsResult, reviewQueue, gateStatus] = await Promise.all([
+
+      const [datasetsResult, gateStatus] = await Promise.all([
         api('/api/fairness/datasets').catch(() => ({ datasets: [] })),
-        api('/api/fairness/review-queue?limit=200').catch(() => ({ items: [], total: 0 })),
         api('/api/fairness/execution-gate').catch(() => ({
           gate: { allowed: true, decision: 'ALLOW', mode: 'shadow' },
           metrics: { total_evaluations: 0, blocked_count: 0, allowed_count: 0 },
         })),
       ]);
-      setData({ datasetsResult, reviewQueue, gateStatus });
+
+      const datasets = datasetsResult?.datasets || [];
+      const scoredDatasetIds = datasets
+        .filter((dataset) => dataset.status === 'analyzed' || dataset.status === 'mitigated')
+        .map((dataset) => dataset.id);
+
+      const [reports, mitigations] = await Promise.all([
+        Promise.all(scoredDatasetIds.map(async (id) => {
+          try {
+            const report = await api(`/api/fairness/datasets/${id}/report`);
+            return { id, report: report?.report || report };
+          } catch {
+            return { id, report: null };
+          }
+        })),
+        Promise.all(scoredDatasetIds.map(async (id) => {
+          try {
+            const mitigation = await api(`/api/fairness/datasets/${id}/mitigation-report`);
+            return { id, mitigation };
+          } catch {
+            return { id, mitigation: null };
+          }
+        })),
+      ]);
+
+      setData({ datasets, gateStatus, reports, mitigations });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -170,11 +218,11 @@ export default function ScoringPage() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, flexDirection: 'column', gap: 16 }}>
-        <div style={{ 
-          width: 40, height: 40, borderRadius: '50%', 
+        <div style={{
+          width: 40, height: 40, borderRadius: '50%',
           border: '3px solid rgba(127,165,190,0.2)',
           borderTopColor: 'var(--primary)',
-          animation: 'spin 0.8s linear infinite' 
+          animation: 'spin 0.8s linear infinite',
         }} />
         <p style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>Computing dataset score...</p>
       </div>
@@ -191,69 +239,87 @@ export default function ScoringPage() {
     );
   }
 
-  // ── Compute dataset score components ──────────────────────
-  const datasets = data?.datasetsResult?.datasets || [];
-  const reviewItems = data?.reviewQueue?.items || [];
+  const datasets = data?.datasets || [];
   const gate = data?.gateStatus?.gate || {};
   const gateMetrics = data?.gateStatus?.metrics || {};
+  const reports = (data?.reports || []).filter((entry) => entry.report);
+  const mitigations = (data?.mitigations || []).filter((entry) => entry.mitigation);
 
   const totalDatasets = datasets.length;
-  const analyzedDatasets = datasets.filter((d) => d.status === 'analyzed' || d.status === 'mitigated').length;
-  const mitigatedDatasets = datasets.filter((d) => d.status === 'mitigated').length;
-
-  const openStatuses = ['open', 'acknowledged'];
-  const openItems = reviewItems.filter((item) => openStatuses.includes(item.status));
-  const highOpenItems = openItems.filter((item) => item.severity === 'high');
+  const analyzedDatasets = datasets.filter((dataset) => dataset.status === 'analyzed' || dataset.status === 'mitigated').length;
+  const mitigatedDatasets = datasets.filter((dataset) => dataset.status === 'mitigated').length;
 
   const analysisScore = totalDatasets > 0 ? Math.round((analyzedDatasets / totalDatasets) * 100) : 100;
-  const mitigationScore = analyzedDatasets > 0
-    ? Math.round((mitigatedDatasets / analyzedDatasets) * 100)
-    : (totalDatasets > 0 ? 0 : 100);
-  const queueScore = Math.round(Math.max(0, 100 - (highOpenItems.length * 20) - (openItems.length * 5)));
-  const fairnessGateScore = gate.allowed ? 100 : 30;
 
-  const weights = { analysis: 0.30, mitigation: 0.25, queue: 0.25, gate: 0.20 };
+  const complianceScores = reports.map(({ report }) => {
+    const violationPenalty = Math.min(60, Number(report?.violation_count || 0) * 8);
+    const riskPenalty = scoreRiskLevel(String(report?.risk_level || 'low').toLowerCase());
+    return Math.max(0, 100 - violationPenalty - riskPenalty);
+  });
+  const fairnessComplianceScore = complianceScores.length > 0
+    ? Math.round(complianceScores.reduce((sum, score) => sum + score, 0) / complianceScores.length)
+    : (totalDatasets > 0 ? 0 : 100);
+
+  const mitigationScores = mitigations.map(({ mitigation }) => {
+    const quality = mitigationQualityFromDeltas(mitigation?.deltas);
+    const impacted = Number(mitigation?.impacted_count || 0);
+    return impacted > 0 ? quality : Math.min(quality, 55);
+  });
+  const mitigationEffectivenessScore = mitigationScores.length > 0
+    ? Math.round(mitigationScores.reduce((sum, score) => sum + score, 0) / mitigationScores.length)
+    : (analyzedDatasets > 0 ? 50 : 100);
+
+  const fairnessGateScore = gate.decision === 'ALLOW' ? 100 : 25;
+
+  const weights = { analysis: 0.30, compliance: 0.35, mitigation: 0.20, gate: 0.15 };
   const compositeScore = Math.round(
     analysisScore * weights.analysis +
-    mitigationScore * weights.mitigation +
-    queueScore * weights.queue +
+    fairnessComplianceScore * weights.compliance +
+    mitigationEffectivenessScore * weights.mitigation +
     fairnessGateScore * weights.gate
   );
 
-  const checklist = [
+  const totalViolations = reports.reduce((sum, entry) => sum + Number(entry.report?.violation_count || 0), 0);
+
+  const checklist = useMemo(() => [
     {
       label: 'Dataset inventory present',
       passed: totalDatasets > 0,
       detail: totalDatasets > 0 ? `${totalDatasets} dataset(s) available for governance` : 'Upload a dataset to begin fairness governance',
     },
     {
-      label: 'Fairness testing coverage',
+      label: 'Fairness analysis coverage',
       passed: analysisScore >= 70,
       detail: `${analyzedDatasets}/${totalDatasets} datasets analyzed (${analysisScore}%)`,
     },
     {
-      label: 'Mitigation adoption',
-      passed: mitigationScore >= 50 || analyzedDatasets === 0,
-      detail: `${mitigatedDatasets}/${analyzedDatasets} analyzed datasets mitigated (${mitigationScore}%)`,
+      label: 'Fairness compliance quality',
+      passed: fairnessComplianceScore >= 65,
+      detail: `${totalViolations} total violations across analyzed datasets`,
     },
     {
-      label: 'High-severity queue control',
-      passed: highOpenItems.length === 0,
-      detail: `${highOpenItems.length} unresolved high-severity item(s)`,
+      label: 'Mitigation effectiveness',
+      passed: mitigationEffectivenessScore >= 60 || analyzedDatasets === 0,
+      detail: `${mitigations.length} mitigation report(s) with average effectiveness ${mitigationEffectivenessScore}%`,
     },
     {
-      label: 'Fairness gate operational',
-      passed: gate.decision === 'ALLOW' || gate.mode === 'shadow',
-      detail: `Gate mode: ${gate.mode || 'shadow'} — ${gate.message || 'No fairness violations detected'}`,
+      label: 'Deterministic gate readiness',
+      passed: gate.decision === 'ALLOW',
+      detail: `Gate decision: ${gate.decision || 'ALLOW'} in ${gate.mode || 'shadow'} mode`,
     },
-    {
-      label: 'Review queue manageable',
-      passed: openItems.length <= 5,
-      detail: `${openItems.length} open/acknowledged queue item(s)`,
-    },
-  ];
+  ], [
+    totalDatasets,
+    analysisScore,
+    analyzedDatasets,
+    fairnessComplianceScore,
+    totalViolations,
+    mitigationEffectivenessScore,
+    mitigations.length,
+    gate.decision,
+    gate.mode,
+  ]);
 
-  const passedCount = checklist.filter(c => c.passed).length;
+  const passedCount = checklist.filter((item) => item.passed).length;
 
   return (
     <motion.div
@@ -262,17 +328,16 @@ export default function ScoringPage() {
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       style={{ maxWidth: 1100, margin: '0 auto', padding: '0 0 40px' }}
     >
-      {/* Header */}
       <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div>
           <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--secondary)', margin: '0 0 6px' }}>
             Dataset Score
           </p>
           <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px', fontFamily: 'var(--font-headline)' }}>
-            Fairness Testing &amp; Mitigation Scorecard
+            Fairness Governance Scorecard
           </h1>
           <p style={{ fontSize: 13, color: 'var(--on-surface-variant)', margin: 0 }}>
-            Dataset-only governance score based on fairness testing coverage, mitigation adoption, review queue health, and gate status.
+            Dataset governance score based on analysis coverage, compliance quality, mitigation effectiveness, and deterministic gate status.
           </p>
         </div>
         <button className="btn-ghost" style={{ fontSize: 11 }} onClick={() => setShowInstructions(true)}>
@@ -281,7 +346,6 @@ export default function ScoringPage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20 }}>
-        {/* Left: Gauge */}
         <div>
           <div className="card" style={{ padding: 28, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
             <ArcGauge score={compositeScore} />
@@ -305,15 +369,13 @@ export default function ScoringPage() {
           </div>
         </div>
 
-        {/* Right: Breakdown + Checklist */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Score Breakdown */}
           <div className="card" style={{ padding: 24 }}>
             <h3 style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--secondary)', margin: '0 0 14px' }}>
               Score Breakdown
             </h3>
             <ScoreRow
-              label="Fairness Testing Coverage"
+              label="Fairness Analysis Coverage"
               value={analysisScore}
               max={100}
               unit="%"
@@ -322,47 +384,45 @@ export default function ScoringPage() {
               detail={`${analyzedDatasets}/${totalDatasets} datasets analyzed (weight: 30%)`}
             />
             <ScoreRow
-              label="Mitigation Coverage"
-              value={mitigationScore}
+              label="Fairness Compliance Quality"
+              value={fairnessComplianceScore}
               max={100}
               unit="%"
-              color={mitigationScore >= 60 ? 'success' : mitigationScore >= 30 ? 'warning' : 'error'}
-              msym="tune"
-              detail={`${mitigatedDatasets}/${analyzedDatasets} analyzed datasets mitigated (weight: 25%)`}
-            />
-            <ScoreRow
-              label="Review Queue Health"
-              value={queueScore}
-              max={100}
-              unit="%"
-              color={queueScore >= 70 ? 'success' : queueScore >= 40 ? 'warning' : 'error'}
+              color={fairnessComplianceScore >= 70 ? 'success' : fairnessComplianceScore >= 45 ? 'warning' : 'error'}
               msym="rule"
-              detail={`${openItems.length} open fairness item(s), ${highOpenItems.length} high severity (weight: 25%)`}
+              detail={`${totalViolations} total violations across analyzed datasets (weight: 35%)`}
             />
             <ScoreRow
-              label="Fairness Gate"
+              label="Mitigation Effectiveness"
+              value={mitigationEffectivenessScore}
+              max={100}
+              unit="%"
+              color={mitigationEffectivenessScore >= 70 ? 'success' : mitigationEffectivenessScore >= 45 ? 'warning' : 'error'}
+              msym="tune"
+              detail={`${mitigations.length} mitigation report(s) evaluated by fairness deltas (weight: 20%)`}
+            />
+            <ScoreRow
+              label="Fairness Gate Readiness"
               value={fairnessGateScore}
               max={100}
               unit="%"
               color={fairnessGateScore === 100 ? 'success' : 'error'}
               msym="balance"
-              detail={`Gate: ${gate.decision || 'ALLOW'} in ${gate.mode || 'shadow'} mode (weight: 20%)`}
+              detail={`Gate decision: ${gate.decision || 'ALLOW'} in ${gate.mode || 'shadow'} mode (weight: 15%)`}
             />
           </div>
 
-          {/* Compliance Checklist */}
           <div className="card" style={{ padding: 24 }}>
             <h3 style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--secondary)', margin: '0 0 14px' }}>
               Compliance Checklist
             </h3>
-            {checklist.map((item, i) => (
-              <CheckItem key={i} label={item.label} passed={item.passed} detail={item.detail} />
+            {checklist.map((item, index) => (
+              <CheckItem key={index} label={item.label} passed={item.passed} detail={item.detail} />
             ))}
           </div>
         </div>
       </div>
 
-      {/* Bottom info */}
       <div className="card" style={{ padding: 20, marginTop: 20, display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Datasets</p>
@@ -377,11 +437,11 @@ export default function ScoringPage() {
           <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--secondary)', fontFamily: 'var(--font-headline)' }}>{mitigatedDatasets}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Open Queue</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: openItems.length > 0 ? 'var(--warning)' : 'var(--success)', fontFamily: 'var(--font-headline)' }}>{openItems.length}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Total Violations</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: totalViolations > 0 ? 'var(--warning)' : 'var(--success)', fontFamily: 'var(--font-headline)' }}>{totalViolations}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Gate Decisions</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Gate Evaluations</p>
           <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: gate.allowed ? 'var(--success)' : 'var(--error)', fontFamily: 'var(--font-headline)' }}>
             {gateMetrics.total_evaluations || 0}
           </p>
@@ -392,24 +452,24 @@ export default function ScoringPage() {
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
         title="Dataset Score"
-        subtitle="This score is only for fairness datasets, testing, queue resolution, and mitigation."
+        subtitle="This score is only for fairness datasets and deterministic fairness controls."
         sections={[
           {
             title: 'How to generate score data',
             steps: [
               'Upload one or more datasets from Dataset Management > Fairness.',
-              'Run fairness analysis to produce dataset reports and queue items.',
-              'Apply mitigation to improve fairness outcomes.',
-              'Review or resolve fairness queue items, then recalculate score.',
+              'Run fairness analysis so each dataset gets a risk level and violation report.',
+              'Run mitigation where needed so effectiveness can be measured by metric deltas.',
+              'Recalculate score after each new analysis/mitigation cycle.',
             ],
           },
           {
             title: 'How to read the score',
             steps: [
-              'Testing Coverage reflects how many datasets have been analyzed.',
-              'Mitigation Coverage reflects adoption of mitigation on analyzed datasets.',
-              'Queue Health drops when unresolved high-severity items remain open.',
-              'Fairness Gate contributes final governance readiness signal.',
+              'Fairness Analysis Coverage tracks how much of your dataset inventory is actually analyzed.',
+              'Fairness Compliance Quality is higher when risk levels are lower and violation counts are lower.',
+              'Mitigation Effectiveness measures whether fairness deltas moved in the right direction after mitigation.',
+              'Fairness Gate Readiness reflects deterministic gate decision status (ALLOW vs BLOCK).',
             ],
           },
         ]}

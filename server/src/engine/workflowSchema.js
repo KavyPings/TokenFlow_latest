@@ -1,12 +1,10 @@
-// ═══════════════════════════════════════════════════════════
 // Workflow Schema & Validation for uploaded workflows
-// ═══════════════════════════════════════════════════════════
 
 import { policyEngine } from './policyEngine.js';
 
 /**
  * JSON schema reference for uploaded workflow definitions.
- * This is returned by GET /api/workflows/schema for client-side validation.
+ * Returned by GET /api/workflows/schema for client-side validation.
  */
 export const WORKFLOW_SCHEMA = {
   type: 'object',
@@ -39,25 +37,44 @@ export const WORKFLOW_SCHEMA = {
           action: {
             type: 'string',
             enum: ['READ_OBJECT', 'CALL_INTERNAL_API', 'FAIRNESS_CHECK', 'WRITE_OBJECT', 'SEND_EMAIL', 'WRITE_AUDIT_LOG'],
-            description: 'The capability action type',
           },
           service: {
             type: 'string',
             enum: ['gcs', 'internal-api', 'fairness-engine', 'email', 'audit-log'],
-            description: 'Target service (must be authorized)',
           },
-          resource: {
-            type: 'string',
-            description: 'Resource path the action targets',
-          },
+          resource: { type: 'string' },
           actionVerb: {
             type: 'string',
             enum: ['read', 'invoke', 'evaluate', 'write', 'send'],
-            description: 'Action verb matching the action type',
           },
         },
       },
     },
+    malicious: { type: 'boolean' },
+    malicious_step: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['READ_REPO'] },
+        service: { type: 'string' },
+        resource: { type: 'string' },
+        actionVerb: { type: 'string', enum: ['read'] },
+      },
+    },
+    replay: { type: 'boolean' },
+    escalation: { type: 'boolean' },
+    escalation_step: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['WRITE_OBJECT'] },
+        service: { type: 'string' },
+        resource: { type: 'string' },
+        actionVerb: { type: 'string', enum: ['write'] },
+      },
+    },
+    kill_at_step: { type: 'integer', minimum: 0 },
+    pause_at_step: { type: 'integer', minimum: 0 },
+    approved_steps: { type: 'array', items: { type: 'integer', minimum: 0 } },
+    enforce_fairness_gate: { type: 'boolean' },
   },
 };
 
@@ -73,19 +90,66 @@ export function validateWorkflow(definition) {
     return { valid: false, errors: ['Workflow must be a valid JSON object.'] };
   }
 
-  // Name validation
   if (!definition.name || typeof definition.name !== 'string') {
     errors.push('name is required and must be a string.');
   } else if (definition.name.length < 1 || definition.name.length > 100) {
     errors.push('name must be between 1 and 100 characters.');
   }
 
-  // Description validation 
   if (definition.description && typeof definition.description !== 'string') {
     errors.push('description must be a string.');
   }
 
-  // Steps validation
+  if (definition.malicious !== undefined && typeof definition.malicious !== 'boolean') {
+    errors.push('malicious must be a boolean when provided.');
+  }
+  if (definition.replay !== undefined && typeof definition.replay !== 'boolean') {
+    errors.push('replay must be a boolean when provided.');
+  }
+  if (definition.escalation !== undefined && typeof definition.escalation !== 'boolean') {
+    errors.push('escalation must be a boolean when provided.');
+  }
+  if (definition.enforce_fairness_gate !== undefined && typeof definition.enforce_fairness_gate !== 'boolean') {
+    errors.push('enforce_fairness_gate must be a boolean when provided.');
+  }
+  if (definition.kill_at_step !== undefined && (!Number.isInteger(definition.kill_at_step) || definition.kill_at_step < 0)) {
+    errors.push('kill_at_step must be a non-negative integer when provided.');
+  }
+  if (definition.pause_at_step !== undefined && (!Number.isInteger(definition.pause_at_step) || definition.pause_at_step < 0)) {
+    errors.push('pause_at_step must be a non-negative integer when provided.');
+  }
+  if (definition.approved_steps !== undefined) {
+    if (!Array.isArray(definition.approved_steps)) {
+      errors.push('approved_steps must be an array of non-negative integers when provided.');
+    } else if (!definition.approved_steps.every((idx) => Number.isInteger(idx) && idx >= 0)) {
+      errors.push('approved_steps must contain only non-negative integers.');
+    }
+  }
+
+  if (definition.malicious_step !== undefined) {
+    const ms = definition.malicious_step;
+    if (!ms || typeof ms !== 'object') {
+      errors.push('malicious_step must be an object when provided.');
+    } else {
+      if (ms.action !== 'READ_REPO') errors.push('malicious_step.action must be READ_REPO.');
+      if (!ms.service || typeof ms.service !== 'string') errors.push('malicious_step.service is required and must be a string.');
+      if (!ms.resource || typeof ms.resource !== 'string') errors.push('malicious_step.resource is required and must be a string.');
+      if (ms.actionVerb !== 'read') errors.push('malicious_step.actionVerb must be read.');
+    }
+  }
+
+  if (definition.escalation_step !== undefined) {
+    const es = definition.escalation_step;
+    if (!es || typeof es !== 'object') {
+      errors.push('escalation_step must be an object when provided.');
+    } else {
+      if (es.action !== 'WRITE_OBJECT') errors.push('escalation_step.action must be WRITE_OBJECT.');
+      if (!es.service || typeof es.service !== 'string') errors.push('escalation_step.service is required and must be a string.');
+      if (!es.resource || typeof es.resource !== 'string') errors.push('escalation_step.resource is required and must be a string.');
+      if (es.actionVerb !== 'write') errors.push('escalation_step.actionVerb must be write.');
+    }
+  }
+
   if (!Array.isArray(definition.steps) || definition.steps.length === 0) {
     errors.push('steps must be a non-empty array.');
   } else if (definition.steps.length > 10) {
@@ -113,32 +177,38 @@ export function validateWorkflow(definition) {
       if (!step.action || !allowedActions.includes(step.action)) {
         errors.push(`Step ${i}: action must be one of: ${allowedActions.join(', ')}`);
       }
-
       if (!step.service || !allowedServices.includes(step.service)) {
         errors.push(`Step ${i}: service must be one of: ${allowedServices.join(', ')}`);
       }
-
       if (step.service && unauthorizedServices.includes(step.service)) {
         errors.push(`Step ${i}: service "${step.service}" is prohibited.`);
       }
-
       if (!step.resource || typeof step.resource !== 'string') {
         errors.push(`Step ${i}: resource is required and must be a string.`);
-      } else {
-        // Basic path traversal protection
-        if (step.resource.includes('..') || step.resource.includes('~')) {
-          errors.push(`Step ${i}: resource path must not contain ".." or "~".`);
-        }
+      } else if (step.resource.includes('..') || step.resource.includes('~')) {
+        errors.push(`Step ${i}: resource path must not contain ".." or "~".`);
       }
-
       if (!step.actionVerb || !allowedVerbs.includes(step.actionVerb)) {
         errors.push(`Step ${i}: actionVerb must be one of: ${allowedVerbs.join(', ')}`);
       }
-
-      // Verify action/verb consistency
       if (step.action && step.actionVerb && actionVerbMap[step.action] !== step.actionVerb) {
         errors.push(`Step ${i}: actionVerb "${step.actionVerb}" does not match action "${step.action}" (expected "${actionVerbMap[step.action]}").`);
       }
+    }
+  }
+
+  if (Array.isArray(definition.steps) && definition.steps.length > 0) {
+    const maxIndex = definition.steps.length - 1;
+    if (definition.kill_at_step !== undefined && Number.isInteger(definition.kill_at_step) && definition.kill_at_step > maxIndex) {
+      errors.push(`kill_at_step must be within workflow step range (0-${maxIndex}).`);
+    }
+    if (definition.pause_at_step !== undefined && Number.isInteger(definition.pause_at_step) && definition.pause_at_step > maxIndex) {
+      errors.push(`pause_at_step must be within workflow step range (0-${maxIndex}).`);
+    }
+    if (Array.isArray(definition.approved_steps)) {
+      definition.approved_steps.forEach((idx) => {
+        if (idx > maxIndex) errors.push(`approved_steps contains out-of-range index: ${idx}. Max allowed is ${maxIndex}.`);
+      });
     }
   }
 
@@ -146,15 +216,46 @@ export function validateWorkflow(definition) {
 }
 
 /**
- * Sanitize a workflow definition, removing potentially dangerous fields.
+ * Sanitize a workflow definition, preserving only explicitly supported fields.
  */
 export function sanitizeWorkflow(definition) {
+  const safeStepIndex = (v) => (Number.isInteger(v) && v >= 0 ? v : null);
+  const approvedSteps = Array.isArray(definition.approved_steps)
+    ? Array.from(new Set(definition.approved_steps.filter((idx) => Number.isInteger(idx) && idx >= 0))).sort((a, b) => a - b)
+    : [];
+
+  const maliciousStep = definition.malicious_step && typeof definition.malicious_step === 'object'
+    ? {
+      action: definition.malicious_step.action,
+      service: String(definition.malicious_step.service || '').slice(0, 80).trim(),
+      resource: String(definition.malicious_step.resource || '').slice(0, 200).trim(),
+      actionVerb: definition.malicious_step.actionVerb,
+    }
+    : null;
+
+  const escalationStep = definition.escalation_step && typeof definition.escalation_step === 'object'
+    ? {
+      action: definition.escalation_step.action,
+      service: String(definition.escalation_step.service || '').slice(0, 80).trim(),
+      resource: String(definition.escalation_step.resource || '').slice(0, 200).trim(),
+      actionVerb: definition.escalation_step.actionVerb,
+    }
+    : null;
+
   return {
     name: String(definition.name || '').slice(0, 100).trim(),
     description: String(definition.description || '').slice(0, 500).trim(),
-    agent: 'agent-cloud-worker', // always override — agents cannot self-assign
-    malicious: false, // uploaded workflows are never malicious
-    steps: (definition.steps || []).map(step => ({
+    agent: 'agent-cloud-worker',
+    malicious: Boolean(definition.malicious),
+    replay: Boolean(definition.replay),
+    escalation: Boolean(definition.escalation),
+    enforce_fairness_gate: Boolean(definition.enforce_fairness_gate),
+    ...(safeStepIndex(definition.kill_at_step) !== null ? { kill_at_step: definition.kill_at_step } : {}),
+    ...(safeStepIndex(definition.pause_at_step) !== null ? { pause_at_step: definition.pause_at_step } : {}),
+    ...(approvedSteps.length > 0 ? { approved_steps: approvedSteps } : {}),
+    ...(maliciousStep ? { malicious_step: maliciousStep } : {}),
+    ...(escalationStep ? { escalation_step: escalationStep } : {}),
+    steps: (definition.steps || []).map((step) => ({
       action: step.action,
       service: step.service,
       resource: String(step.resource || '').slice(0, 200).trim(),
@@ -170,10 +271,10 @@ export function getTemplates() {
   return [
     {
       id: 'template-read-process-write',
-      name: 'Read → Process → Write',
+      name: 'Read -> Process -> Write',
       description: 'Standard ETL pipeline: read data, process via API, write results.',
       definition: {
-        name: 'Read → Process → Write Pipeline',
+        name: 'Read -> Process -> Write Pipeline',
         description: 'Read input data from cloud storage, process through internal API, write output.',
         steps: [
           { action: 'READ_OBJECT', service: 'gcs', resource: 'input/data.json', actionVerb: 'read' },
@@ -189,9 +290,7 @@ export function getTemplates() {
       definition: {
         name: 'Read-Only Data Audit',
         description: 'Reads data from cloud storage without modification.',
-        steps: [
-          { action: 'READ_OBJECT', service: 'gcs', resource: 'audit/records.json', actionVerb: 'read' },
-        ],
+        steps: [{ action: 'READ_OBJECT', service: 'gcs', resource: 'audit/records.json', actionVerb: 'read' }],
       },
     },
     {

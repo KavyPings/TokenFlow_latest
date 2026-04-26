@@ -230,6 +230,10 @@ export default function LandingPage({ onEnter }) {
               { step: '5', title: 'Enterprise Audit', desc: 'Go to Enterprise Audit. Upload your own workflow + dataset for combined AI-powered security and fairness analysis.', msym: 'domain', color: 'var(--success)', target: 'enterprise' },
               { step: '6', title: 'Export Reports', desc: 'From Enterprise Audit → Combined Report, download compliance evidence. Save audits to compare results over time.', msym: 'download', color: 'var(--outline)', target: 'enterprise' },
             ].map((s) => (
+              s.step === '3'
+                ? { ...s, title: 'Review Workflow Score', desc: 'Go to Workflow Management -> Workflow Score. Select a workflow and inspect execution quality signals.', msym: 'query_stats', target: 'workflowScore' }
+                : s
+            )).map((s) => (
               <button key={s.step} onClick={() => onEnter(s.target)} className="flex gap-3 text-left group" style={{ all: 'unset', cursor: 'pointer', display: 'flex', gap: '0.75rem' }}>
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg flex-shrink-0"
                   style={{ background: `color-mix(in srgb, ${s.color} 12%, transparent)` }}>

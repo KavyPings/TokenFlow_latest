@@ -110,12 +110,20 @@ router.post('/run-workflow', async (req, res) => {
       name: sanitized.name || 'Enterprise Workflow',
       description: sanitized.description || '',
       agent: sanitized.agent || 'agent-cloud-worker',
-      malicious: false,
+      malicious: sanitized.malicious,
+      replay: sanitized.replay,
+      escalation: sanitized.escalation,
+      enforce_fairness_gate: sanitized.enforce_fairness_gate,
+      ...(sanitized.kill_at_step !== undefined ? { kill_at_step: sanitized.kill_at_step } : {}),
+      ...(sanitized.pause_at_step !== undefined ? { pause_at_step: sanitized.pause_at_step } : {}),
+      ...(Array.isArray(sanitized.approved_steps) && sanitized.approved_steps.length > 0 ? { approved_steps: sanitized.approved_steps } : {}),
+      ...(sanitized.malicious_step ? { malicious_step: sanitized.malicious_step } : {}),
+      ...(sanitized.escalation_step ? { escalation_step: sanitized.escalation_step } : {}),
       steps: sanitized.steps,
     };
 
     const result = await workflowRunner.startWorkflow(taskData, {
-      workflowType: 'enterprise',
+      workflowType: 'mission',
     });
 
     res.status(201).json({ success: true, ...result });

@@ -18,11 +18,34 @@ const stepInputSchema = z.object({
   actionVerb: z.enum(['read', 'invoke', 'evaluate', 'write', 'send']),
 });
 
+const maliciousStepSchema = z.object({
+  action: z.literal('READ_REPO'),
+  service: z.string().min(1).max(80),
+  resource: z.string().min(1).max(200),
+  actionVerb: z.literal('read'),
+});
+
+const escalationStepSchema = z.object({
+  action: z.literal('WRITE_OBJECT'),
+  service: z.string().min(1).max(80),
+  resource: z.string().min(1).max(200),
+  actionVerb: z.literal('write'),
+});
+
 const workflowUploadSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   agent: z.string().optional(),
   steps: z.array(stepInputSchema).min(1).max(10),
+  malicious: z.boolean().optional(),
+  malicious_step: maliciousStepSchema.optional(),
+  replay: z.boolean().optional(),
+  escalation: z.boolean().optional(),
+  escalation_step: escalationStepSchema.optional(),
+  kill_at_step: z.number().int().min(0).optional(),
+  pause_at_step: z.number().int().min(0).optional(),
+  approved_steps: z.array(z.number().int().min(0)).optional(),
+  enforce_fairness_gate: z.boolean().optional(),
 }).passthrough();
 
 // ─── POST /api/workflows/upload ──────────────────────────
@@ -133,7 +156,15 @@ router.post('/upload/:id/run', async (req, res) => {
       name: sanitized.name,
       description: sanitized.description,
       agent: sanitized.agent || 'agent-cloud-worker',
-      malicious: false,
+      malicious: sanitized.malicious,
+      replay: sanitized.replay,
+      escalation: sanitized.escalation,
+      enforce_fairness_gate: sanitized.enforce_fairness_gate,
+      ...(sanitized.kill_at_step !== undefined ? { kill_at_step: sanitized.kill_at_step } : {}),
+      ...(sanitized.pause_at_step !== undefined ? { pause_at_step: sanitized.pause_at_step } : {}),
+      ...(Array.isArray(sanitized.approved_steps) && sanitized.approved_steps.length > 0 ? { approved_steps: sanitized.approved_steps } : {}),
+      ...(sanitized.malicious_step ? { malicious_step: sanitized.malicious_step } : {}),
+      ...(sanitized.escalation_step ? { escalation_step: sanitized.escalation_step } : {}),
       steps: sanitized.steps,
     };
 

@@ -433,7 +433,7 @@ function UploadContextTab({
       {datasetMeta && (
         <div className="card p-5 mb-6">
           <h3 className="text-sm font-bold uppercase tracking-[0.1em] mb-3">Dataset Schema Mapping</h3>
-          <p className="text-[11px] mb-4" style={{ color: 'var(--on-surface-variant)' }}>Map your dataset columns so the fairness engine can run. Only record ID, target outcome, and predicted outcome are required.</p>
+          <p className="text-[11px] mb-4" style={{ color: 'var(--on-surface-variant)' }}>Map your dataset columns so the fairness engine can run. Record ID, target outcome, predicted outcome, timestamp, and model version are all required.</p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
             {[
               { key: 'record_id', label: 'Record ID', required: true },
@@ -726,30 +726,37 @@ function FairnessAnalysisTab({ datasetFile, datasetConfig, datasetMeta, fairness
   async function handleRun() {
     if (!datasetFile) { setError('No dataset uploaded. Go back to Upload & Context.'); return; }
 
-    // Build a proper config that the validation layer expects
     const cm = datasetConfig.column_mappings || {};
-    const fixedConfig = {
-      dataset_name: datasetConfig.dataset_name || 'Enterprise Dataset',
+    const configToSubmit = {
+      dataset_name: datasetConfig.dataset_name,
       column_mappings: {
-        record_id: cm.record_id || '',
-        target_outcome: cm.target_outcome || '',
-        predicted_outcome: cm.predicted_outcome || '',
-        // Only include optional fields if they have a value
+        record_id: cm.record_id,
+        target_outcome: cm.target_outcome,
+        predicted_outcome: cm.predicted_outcome,
+        timestamp: cm.timestamp,
+        model_version: cm.model_version,
         ...(cm.predicted_score ? { predicted_score: cm.predicted_score } : {}),
-        // Provide dummy values for required-by-validation fields if not mapped
-        timestamp: cm.timestamp || cm.record_id || '',
-        model_version: cm.model_version || cm.record_id || '',
       },
       protected_attributes: (datasetConfig.protected_attributes || [])
         .filter(a => a.column && a.reference_group)
         .map(a => ({ column: a.column, reference_group: a.reference_group })),
     };
 
-    if (!fixedConfig.column_mappings.record_id || !fixedConfig.column_mappings.target_outcome || !fixedConfig.column_mappings.predicted_outcome) {
-      setError('Please map at least record_id, target_outcome, and predicted_outcome columns.');
+    if (!configToSubmit.dataset_name?.trim()) {
+      setError('Please provide a dataset name before running fairness analysis.');
       return;
     }
-    if (fixedConfig.protected_attributes.length === 0) {
+    if (
+      !configToSubmit.column_mappings.record_id ||
+      !configToSubmit.column_mappings.target_outcome ||
+      !configToSubmit.column_mappings.predicted_outcome ||
+      !configToSubmit.column_mappings.timestamp ||
+      !configToSubmit.column_mappings.model_version
+    ) {
+      setError('Please map record_id, target_outcome, predicted_outcome, timestamp, and model_version columns.');
+      return;
+    }
+    if (configToSubmit.protected_attributes.length === 0) {
       setError('Please add at least one protected attribute with a column and reference group.');
       return;
     }
@@ -758,7 +765,7 @@ function FairnessAnalysisTab({ datasetFile, datasetConfig, datasetMeta, fairness
     try {
       const fd = new FormData();
       fd.append('file', datasetFile);
-      fd.append('config', JSON.stringify(fixedConfig));
+      fd.append('config', JSON.stringify(configToSubmit));
       const result = await apiUpload('/api/enterprise/run-fairness', fd);
       setFairnessResult(result);
       setFairnessDatasetId(result.dataset_id);

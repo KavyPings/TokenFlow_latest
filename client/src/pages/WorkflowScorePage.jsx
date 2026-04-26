@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../api.js';
 import InstructionsDialog from '../components/InstructionsDialog.jsx';
@@ -126,22 +126,42 @@ function CheckItem({ label, passed, detail }) {
   );
 }
 
+function statusScore(status) {
+  if (status === 'completed') return 100;
+  if (status === 'paused') return 75;
+  if (status === 'aborted' || status === 'killed') return 65;
+  if (status === 'running') return 55;
+  return 40;
+}
+
+function policyResponseScore({ flagged, revoked, status }) {
+  if (flagged === 0) return 100;
+  if (revoked > 0 || status === 'paused' || status === 'aborted' || status === 'killed') return 90;
+  if (status === 'completed') return 70;
+  return 50;
+}
+
 export default function WorkflowScorePage() {
-  const [data, setData] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [chain, setChain] = useState([]);
+  const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingWorkflowData, setLoadingWorkflowData] = useState(false);
   const [error, setError] = useState(null);
   const [showInstructions, setShowInstructions] = useState(false);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
 
-  const loadData = useCallback(async () => {
+  const loadOverview = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-      const [overview, testResults] = await Promise.all([
-        api('/api/dashboard/overview'),
-        api('/api/testbench/results?limit=100').catch(() => ({ results: [] })),
-      ]);
-      setData({ overview, testResults });
+      const data = await api('/api/dashboard/overview');
+      setOverview(data || null);
+      const workflows = data?.workflows || [];
+      setSelectedWorkflowId((current) => {
+        if (current && workflows.some((workflow) => workflow.id === current)) return current;
+        return workflows[0]?.id || '';
+      });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -149,21 +169,113 @@ export default function WorkflowScorePage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    const workflows = data?.overview?.workflows || [];
-    if (workflows.length === 0) {
-      setSelectedWorkflowId('');
+  const loadSelectedWorkflowData = useCallback(async (workflowId) => {
+    if (!workflowId) {
+      setChain([]);
+      setAudit([]);
       return;
     }
-    setSelectedWorkflowId((current) => {
-      if (current && workflows.some((workflow) => workflow.id === current)) return current;
-      return workflows[0].id;
-    });
-  }, [data]);
+    setLoadingWorkflowData(true);
+    try {
+      const [chainResult, auditResult] = await Promise.all([
+        api(`/api/tokens/chain/${workflowId}`).catch(() => ({ chain: [] })),
+        api(`/api/tokens/audit?workflowId=${workflowId}`).catch(() => ({ audit_log: [] })),
+      ]);
+      setChain(chainResult?.chain || []);
+      setAudit(auditResult?.audit_log || []);
+    } finally {
+      setLoadingWorkflowData(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOverview();
+  }, [loadOverview]);
+
+  useEffect(() => {
+    loadSelectedWorkflowData(selectedWorkflowId);
+  }, [selectedWorkflowId, loadSelectedWorkflowData]);
+
+  const workflows = overview?.workflows || [];
+  const selectedWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId) || null;
+
+  const tokenSummary = selectedWorkflow?.token_summary || {};
+  const totalTokensFromSummary = Object.values(tokenSummary).reduce((sum, value) => sum + value, 0);
+  const totalTokens = chain.length || totalTokensFromSummary;
+  const burnedTokens = chain.filter((token) => token.status === 'burned').length || (tokenSummary.burned || 0);
+  const flaggedTokens = chain.filter((token) => token.status === 'flagged').length || (tokenSummary.flagged || 0);
+  const revokedTokens = chain.filter((token) => token.status === 'revoked').length || (tokenSummary.revoked || 0);
+
+  const tokenIntegrityScore = !selectedWorkflow
+    ? 0
+    : totalTokens > 0
+      ? Math.round((burnedTokens / totalTokens) * 100)
+      : (selectedWorkflow.status === 'completed' ? 100 : 0);
+
+  const responseScore = selectedWorkflow
+    ? policyResponseScore({
+      flagged: flaggedTokens,
+      revoked: revokedTokens,
+      status: selectedWorkflow.status,
+    })
+    : 0;
+
+  const auditCoverageScore = audit.length > 0
+    ? Math.min(100, 40 + (audit.length * 8))
+    : 0;
+
+  const executionOutcomeScore = selectedWorkflow
+    ? statusScore(selectedWorkflow.status)
+    : 0;
+
+  const weights = { token: 0.35, response: 0.25, audit: 0.25, outcome: 0.15 };
+  const compositeScore = Math.round(
+    tokenIntegrityScore * weights.token +
+    responseScore * weights.response +
+    auditCoverageScore * weights.audit +
+    executionOutcomeScore * weights.outcome
+  );
+
+  const checklist = useMemo(() => [
+    {
+      label: 'Workflow selected',
+      passed: Boolean(selectedWorkflow),
+      detail: selectedWorkflow ? `${selectedWorkflow.name || 'Unnamed workflow'} (${selectedWorkflow.id.slice(0, 10)})` : 'Select a workflow to compute score',
+    },
+    {
+      label: 'Token lifecycle evidence',
+      passed: tokenIntegrityScore >= 60,
+      detail: `${burnedTokens}/${totalTokens || 0} tokens burned cleanly`,
+    },
+    {
+      label: 'Policy response quality',
+      passed: responseScore >= 70,
+      detail: `${flaggedTokens} flagged, ${revokedTokens} revoked`,
+    },
+    {
+      label: 'Audit trail depth',
+      passed: auditCoverageScore >= 60,
+      detail: `${audit.length} audit event(s) captured for selected workflow`,
+    },
+    {
+      label: 'Execution outcome recorded',
+      passed: executionOutcomeScore >= 55,
+      detail: `Status: ${selectedWorkflow?.status || 'not started'}`,
+    },
+  ], [
+    selectedWorkflow,
+    tokenIntegrityScore,
+    burnedTokens,
+    totalTokens,
+    responseScore,
+    flaggedTokens,
+    revokedTokens,
+    auditCoverageScore,
+    audit.length,
+    executionOutcomeScore,
+  ]);
+
+  const passedCount = checklist.filter((item) => item.passed).length;
 
   if (loading) {
     return (
@@ -188,101 +300,10 @@ export default function WorkflowScorePage() {
       <div style={{ padding: 32, textAlign: 'center' }}>
         <M icon="error" style={{ fontSize: 48, color: 'var(--error)' }} />
         <p style={{ color: 'var(--error)', marginTop: 12 }}>Failed to load workflow score data: {error}</p>
-        <button className="btn-primary" style={{ marginTop: 16 }} onClick={loadData}>Retry</button>
+        <button className="btn-primary" style={{ marginTop: 16 }} onClick={loadOverview}>Retry</button>
       </div>
     );
   }
-
-  const workflows = data?.overview?.workflows || [];
-  const reviewQueue = data?.overview?.reviewQueue || [];
-  const testRuns = data?.testResults?.results || [];
-  const selectedWorkflow =
-    workflows.find((workflow) => workflow.id === selectedWorkflowId) || workflows[0] || null;
-  const selectedInReview = selectedWorkflow
-    ? reviewQueue.some((item) => item.workflowId === selectedWorkflow.id)
-    : false;
-  const tokenSummary = selectedWorkflow?.token_summary || {};
-  const totalWorkflowTokens = Object.values(tokenSummary).reduce((sum, value) => sum + value, 0);
-  const burnedWorkflowTokens = tokenSummary.burned || 0;
-
-  const auditScore = selectedWorkflow
-    ? ((selectedWorkflow.audit_event_count || 0) > 0 ? 100 : 0)
-    : 0;
-  const interceptScore = !selectedWorkflow
-    ? 0
-    : selectedInReview
-      ? 35
-      : selectedWorkflow.status === 'completed'
-        ? 100
-        : selectedWorkflow.status === 'running'
-          ? 70
-          : selectedWorkflow.status === 'paused'
-            ? 45
-            : selectedWorkflow.status === 'aborted' || selectedWorkflow.status === 'killed'
-              ? 55
-              : 50;
-  const tokenCompletionScore = !selectedWorkflow
-    ? 0
-    : totalWorkflowTokens > 0
-      ? Math.round((burnedWorkflowTokens / totalWorkflowTokens) * 100)
-      : (selectedWorkflow.status === 'completed' ? 100 : 0);
-
-  const passedRuns = testRuns.filter((r) => r.status === 'passed').length;
-  const testPassRate = testRuns.length > 0 ? Math.round((passedRuns / testRuns.length) * 100) : 0;
-  const testScore = testRuns.length > 0 ? testPassRate : 50;
-
-  const weights = { audit: 0.35, intercept: 0.3, completion: 0.2, tests: 0.15 };
-  const compositeScore = Math.round(
-    auditScore * weights.audit +
-      interceptScore * weights.intercept +
-      tokenCompletionScore * weights.completion +
-      testScore * weights.tests
-  );
-
-  const checklist = [
-    {
-      label: 'Audit trail completeness',
-      passed: auditScore >= 80,
-      detail: selectedWorkflow
-        ? `${selectedWorkflow.audit_event_count || 0} audit event(s) recorded for selected workflow`
-        : 'Select or run a workflow to evaluate audit trail completeness',
-    },
-    {
-      label: 'Security intercept quality',
-      passed: interceptScore >= 70,
-      detail: selectedWorkflow
-        ? (selectedInReview
-          ? 'Selected workflow is currently flagged in review queue'
-          : 'Selected workflow is not flagged in review queue')
-        : 'No workflow selected',
-    },
-    {
-      label: 'Workflow execution evidence',
-      passed: tokenCompletionScore >= 60,
-      detail: selectedWorkflow
-        ? `${burnedWorkflowTokens}/${totalWorkflowTokens || 0} tokens burned for selected workflow`
-        : 'Run a workflow to capture token evidence',
-    },
-    {
-      label: 'Testbench invariant health',
-      passed: testScore >= 70,
-      detail: testRuns.length > 0 ? `${passedRuns}/${testRuns.length} test runs passed` : 'No testbench runs yet',
-    },
-    {
-      label: 'Vault credential isolation',
-      passed: (data?.overview?.credentials || []).length > 0,
-      detail: `${(data?.overview?.credentials || []).length} credential metadata record(s) available`,
-    },
-    {
-      label: 'Intervention outcomes captured',
-      passed: Boolean(selectedWorkflow),
-      detail: selectedWorkflow
-        ? `Selected workflow status: ${selectedWorkflow.status || 'unknown'}`
-        : 'No workflow selected',
-    },
-  ];
-
-  const passedCount = checklist.filter((item) => item.passed).length;
 
   return (
     <motion.div
@@ -294,8 +315,8 @@ export default function WorkflowScorePage() {
       <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div>
           <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--secondary)', margin: '0 0 6px' }}>Workflow Score</p>
-          <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px', fontFamily: 'var(--font-headline)' }}>Workflow Tokenchain Scorecard</h1>
-          <p style={{ fontSize: 13, color: 'var(--on-surface-variant)', margin: 0 }}>Operational score based only on workflow tokenchains, intercept quality, and invariant test outcomes.</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px', fontFamily: 'var(--font-headline)' }}>Workflow Execution Scorecard</h1>
+          <p style={{ fontSize: 13, color: 'var(--on-surface-variant)', margin: 0 }}>Score for the selected workflow based on token lifecycle, policy response, audit evidence, and execution outcome.</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <select
@@ -335,7 +356,7 @@ export default function WorkflowScorePage() {
                 />
               </div>
             </div>
-            <button onClick={loadData} className="btn-ghost" style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}>
+            <button onClick={loadOverview} className="btn-ghost" style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}>
               <M icon="refresh" style={{ fontSize: 14 }} /> Recalculate
             </button>
           </div>
@@ -345,46 +366,40 @@ export default function WorkflowScorePage() {
           <div className="card" style={{ padding: 24 }}>
             <h3 style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--secondary)', margin: '0 0 14px' }}>Score Breakdown</h3>
             <ScoreRow
-              label="Audit Evidence Coverage"
-              value={auditScore}
+              label="Token Lifecycle Integrity"
+              value={tokenIntegrityScore}
               max={100}
               unit="%"
-              color={auditScore >= 80 ? 'success' : 'warning'}
-              msym="receipt_long"
-              detail={selectedWorkflow
-                ? `${selectedWorkflow.audit_event_count || 0} audit events on selected workflow (weight: 35%)`
-                : 'Select a workflow to compute audit evidence (weight: 35%)'}
-            />
-            <ScoreRow
-              label="Security Intercept Quality"
-              value={interceptScore}
-              max={100}
-              unit="%"
-              color={interceptScore >= 70 ? 'success' : interceptScore >= 40 ? 'warning' : 'error'}
-              msym="shield"
-              detail={selectedWorkflow
-                ? `${selectedInReview ? 'Flagged in queue' : 'No active flag'} (weight: 30%)`
-                : 'Select a workflow to compute intercept quality (weight: 30%)'}
-            />
-            <ScoreRow
-              label="Token Completion"
-              value={tokenCompletionScore}
-              max={100}
-              unit="%"
-              color={tokenCompletionScore >= 70 ? 'success' : tokenCompletionScore >= 40 ? 'warning' : 'error'}
+              color={tokenIntegrityScore >= 70 ? 'success' : tokenIntegrityScore >= 45 ? 'warning' : 'error'}
               msym="token"
-              detail={selectedWorkflow
-                ? `${burnedWorkflowTokens}/${totalWorkflowTokens || 0} tokens burned (weight: 20%)`
-                : 'Select a workflow to compute token completion (weight: 20%)'}
+              detail={`${burnedTokens}/${totalTokens || 0} tokens burned cleanly (weight: 35%)`}
             />
             <ScoreRow
-              label="Testbench Pass Rate"
-              value={testRuns.length > 0 ? passedRuns : 0}
-              max={testRuns.length || 0}
-              unit=""
-              color={testScore >= 70 ? 'success' : testScore >= 40 ? 'warning' : 'error'}
-              msym="science"
-              detail={testRuns.length > 0 ? `${passedRuns}/${testRuns.length} scenarios passed (weight: 15%)` : 'No testbench runs yet — run scenarios to validate (weight: 15%)'}
+              label="Policy Response Quality"
+              value={responseScore}
+              max={100}
+              unit="%"
+              color={responseScore >= 70 ? 'success' : responseScore >= 45 ? 'warning' : 'error'}
+              msym="shield"
+              detail={`${flaggedTokens} flagged, ${revokedTokens} revoked (weight: 25%)`}
+            />
+            <ScoreRow
+              label="Audit Trail Coverage"
+              value={auditCoverageScore}
+              max={100}
+              unit="%"
+              color={auditCoverageScore >= 70 ? 'success' : auditCoverageScore >= 45 ? 'warning' : 'error'}
+              msym="receipt_long"
+              detail={`${audit.length} events on selected workflow (weight: 25%)`}
+            />
+            <ScoreRow
+              label="Execution Outcome Stability"
+              value={executionOutcomeScore}
+              max={100}
+              unit="%"
+              color={executionOutcomeScore >= 70 ? 'success' : executionOutcomeScore >= 45 ? 'warning' : 'error'}
+              msym="play_circle"
+              detail={`Current status: ${selectedWorkflow?.status || 'idle'} (weight: 15%)`}
             />
           </div>
 
@@ -400,19 +415,19 @@ export default function WorkflowScorePage() {
       <div className="card" style={{ padding: 20, marginTop: 20, display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Selected Workflow</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-headline)' }}>{selectedWorkflow ? selectedWorkflow.id.slice(0, 10) : '—'}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-headline)' }}>{selectedWorkflow ? selectedWorkflow.id.slice(0, 10) : 'â€”'}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Selected Status</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Status</p>
           <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--success)', fontFamily: 'var(--font-headline)' }}>{selectedWorkflow?.status || 'idle'}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Testbench Runs</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--secondary)', fontFamily: 'var(--font-headline)' }}>{testRuns.length}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Flagged Tokens</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: flaggedTokens > 0 ? 'var(--warning)' : 'var(--success)', fontFamily: 'var(--font-headline)' }}>{flaggedTokens}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Selected Queue Flag</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: selectedInReview ? 'var(--warning)' : 'var(--success)', fontFamily: 'var(--font-headline)' }}>{selectedInReview ? 1 : 0}</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Audit Events</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--secondary)', fontFamily: 'var(--font-headline)' }}>{loadingWorkflowData ? '...' : audit.length}</p>
         </div>
       </div>
 
@@ -420,23 +435,23 @@ export default function WorkflowScorePage() {
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
         title="Workflow Score"
-        subtitle="This score is only for workflow tokenchains and execution evidence."
+        subtitle="This score is computed for the workflow you selected in the dropdown."
         sections={[
           {
             title: 'How to generate score data',
             steps: [
               'Run one or more workflows from Workflow Management > Mock Workflows or Uploaded Workflows.',
-              'Open Token Chain and confirm events are present for those runs.',
-              'Run Testbench scenarios to populate invariant pass/fail evidence.',
+              'Open Token Chain to confirm tokens and audit events were recorded.',
+              'Open Workflow Score and select the workflow you want to evaluate.',
             ],
           },
           {
             title: 'How to read the score',
             steps: [
-              'Audit Evidence Coverage checks if workflows have audit trails.',
-              'Security Intercept Quality penalizes high flagged ratios.',
-              'Testbench Pass Rate reflects invariant health.',
-              'Use Recalculate after each change to refresh values.',
+              'Token Lifecycle Integrity checks how cleanly tokens were consumed (burned vs non-burned states).',
+              'Policy Response Quality checks whether flagged behavior led to policy action (pause/revoke/abort) when needed.',
+              'Audit Trail Coverage checks whether enough workflow events were captured for traceability.',
+              'Execution Outcome Stability reflects the final/active workflow state so unfinished runs score lower.',
             ],
           },
         ]}

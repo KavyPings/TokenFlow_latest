@@ -82,14 +82,6 @@ async function apiPost(path, body) {
   });
 }
 
-async function apiPatch(path, body) {
-  return apiFetch(path, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-}
-
 async function apiUpload(path, formData) {
   return apiFetch(path, { method: 'POST', body: formData });
 }
@@ -211,7 +203,6 @@ export default function FairnessPage() {
   const [activeDatasetId, setActiveDatasetId] = useState(null);
   const [report, setReport] = useState(null);
   const [auditTrail, setAuditTrail] = useState([]);
-  const [reviewQueue, setReviewQueue] = useState({ items: [], total: 0 });
   const [mitigationReport, setMitigationReport] = useState(null);
   const [mitigatedDatasetLinks, setMitigatedDatasetLinks] = useState(null);
   const [gateStatus, setGateStatus] = useState(null);
@@ -241,12 +232,6 @@ export default function FairnessPage() {
     if (!activeDatasetId) return;
     apiGet(`/api/fairness/datasets/${activeDatasetId}/report`).then(setReport).catch(() => setReport(null));
     apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => setAuditTrail([]));
-    apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`)
-      .then(setReviewQueue)
-      .catch((e) => {
-        setReviewQueue({ items: [], total: 0 });
-        setError(`Review queue load failed: ${e.message}`);
-      });
     apiGet(`/api/fairness/datasets/${activeDatasetId}/mitigation-report`).then(setMitigationReport).catch(() => setMitigationReport(null));
     setMitigatedDatasetLinks({
       json_url: `/api/fairness/datasets/${activeDatasetId}/mitigated-dataset?format=json`,
@@ -272,9 +257,6 @@ export default function FairnessPage() {
       if (data.gate) setGateStatus(data.gate);
       setSuccess(`Analysis complete — Risk level: ${data.report.risk_level.toUpperCase()}`);
       apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => {});
-      apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`).then(setReviewQueue).catch((e) => {
-        setError(`Review queue refresh failed: ${e.message}`);
-      });
       setTimeout(() => setSuccess(''), 6000);
     } catch (e) { setError(e.message); }
     setBusy('');
@@ -300,25 +282,12 @@ export default function FairnessPage() {
     setBusy('');
   }
 
-  async function handleReviewAction(itemId, status) {
-    clearMessages();
-    try {
-      const data = await apiPatch(`/api/fairness/review-queue/${itemId}`, { status, reviewer: 'ui-user' });
-      if (data.gate) setGateStatus(data.gate);
-      apiGet(`/api/fairness/review-queue?dataset_id=${activeDatasetId}`).then(setReviewQueue).catch(() => {});
-      apiGet(`/api/fairness/datasets/${activeDatasetId}/audit-trail`).then(d => setAuditTrail(d.audit_trail || [])).catch(() => {});
-      setSuccess(`Review item ${status}`);
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (e) { setError(e.message); }
-  }
-
   const activeDataset = datasets.find(d => d.id === activeDatasetId);
 
   const TABS = [
     { id: 'upload', label: 'Upload & Configure', icon: 'cloud_upload' },
     { id: 'results', label: 'Analysis Results', icon: 'analytics' },
     { id: 'mitigation', label: 'Mitigation', icon: 'healing' },
-    { id: 'review', label: 'Review Queue', icon: 'checklist', badge: reviewQueue.total },
     { id: 'audit', label: 'Audit Trail', icon: 'history' },
   ];
 
@@ -453,7 +422,6 @@ export default function FairnessPage() {
                 mitigatedDatasetLinks={mitigatedDatasetLinks}
               />
             )}
-            {tab === 'review' && <ReviewTab key="review" queue={reviewQueue} report={report} onAction={handleReviewAction} />}
             {tab === 'audit' && <AuditTab key="audit" trail={auditTrail} />}
           </AnimatePresence>
         </div>
@@ -793,16 +761,24 @@ function UploadTab({ onComplete, setError }) {
               {guideSection === 'outputs' && (
                 <div className="space-y-3">
                   <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
-                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>Analysis tab output</p>
-                    <p>Risk level, violation summary, per-group selection/TPR/FPR, fairness metrics (SPD, DIR, EOD, AOD), disadvantaged groups, and detailed policy-level violations.</p>
+                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>What every fairness metric means</p>
+                    <p>`Selection Rate (SR)`: share of each group that receives a positive decision.</p>
+                    <p>`TPR`: how often truly eligible people are correctly approved in each group.</p>
+                    <p>`FPR`: how often truly ineligible people are incorrectly approved in each group.</p>
+                    <p>`SPD`: difference in Selection Rate versus the reference group (near 0 is better).</p>
+                    <p>`DIR`: ratio of Selection Rate versus the reference group (near 1 is better).</p>
+                    <p>`EOD`: difference in TPR versus reference (near 0 is better).</p>
+                    <p>`AOD`: average of TPR/FPR disparities versus reference (near 0 is better).</p>
                   </div>
                   <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
-                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>Mitigation tab output</p>
-                    <p>Impacted cases, effectiveness badge, fairness deltas, computed group strategy details, plus downloadable mitigated CSV/JSON dataset.</p>
+                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>How mitigation works</p>
+                    <p>Mitigation runs deterministic threshold adjustment per group (when `predicted_score` exists).</p>
+                    <p>The engine adjusts decision cutoffs to reduce disparity against the reference group while preserving useful accuracy.</p>
+                    <p>You receive impacted-case count, fairness deltas (before vs after), and downloadable mitigated CSV/JSON outputs.</p>
                   </div>
                   <div className="card p-4" style={{ background: 'var(--surface-container-high)' }}>
-                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>Review + Audit output</p>
-                    <p>Review queue with triage actions and immutable audit timeline of upload/analyze/mitigate/review events.</p>
+                    <p className="font-bold mb-1" style={{ color: 'var(--on-surface)' }}>Audit output</p>
+                    <p>Immutable audit timeline of upload, profile, analysis, gate evaluation, and mitigation events.</p>
                   </div>
                 </div>
               )}
@@ -810,8 +786,7 @@ function UploadTab({ onComplete, setError }) {
                 <div className="space-y-3">
                   {[
                     'Upload dataset and map required columns.',
-                    'Run analysis and inspect violations + disadvantaged groups.',
-                    'Review/acknowledge critical queue items and policy-level blockers.',
+                    'Run analysis and inspect violations + largest-deviation groups.',
                     'Run mitigation and confirm effectiveness + fairness deltas.',
                     'Download mitigated dataset and re-validate in your model workflow before deployment.',
                   ].map((step, i) => (
@@ -961,12 +936,12 @@ function ResultsTab({ report, activeDataset }) {
         </div>
       ))}
 
-      {/* Disadvantaged Groups */}
+      {/* Largest Metric Deviations */}
       {rpt.disadvantaged_groups?.length > 0 && (
         <div className="card p-5">
           <h3 className="text-sm font-bold uppercase tracking-[0.1em] font-headline mb-3">
             <M icon="trending_down" style={{ fontSize: 16, color: 'var(--warning)', verticalAlign: 'middle', marginRight: 6 }} />
-            Disadvantaged Groups
+            Largest Deviation From Reference
           </h3>
           <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(70,69,85,0.15)' }}>
             <table className="w-full text-xs">
@@ -974,7 +949,7 @@ function ResultsTab({ report, activeDataset }) {
                 <tr style={{ background: 'var(--surface-container-high)' }}>
                   <th className="px-3 py-2 text-left font-bold">Attribute</th>
                   <th className="px-3 py-2 text-left font-bold">Metric</th>
-                  <th className="px-3 py-2 text-left font-bold">Worst Group</th>
+                  <th className="px-3 py-2 text-left font-bold">Farthest Group</th>
                   <th className="px-3 py-2 text-left font-bold">Value</th>
                   <th className="px-3 py-2 text-left font-bold">Distance from Ref</th>
                 </tr>
@@ -1315,9 +1290,9 @@ function DeltaCell({ value }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   TAB: Review Queue
+   TAB: Violations (Legacy)
    ═══════════════════════════════════════════════════════════ */
-function ReviewTab({ queue, report, onAction }) {
+function LegacyViolationsTab({ queue, report, onAction }) {
   const fallbackViolations = report?.report?.violations || [];
   const hasQueueItems = !!(queue.items && queue.items.length > 0);
   const itemsToRender = hasQueueItems
@@ -1337,7 +1312,7 @@ function ReviewTab({ queue, report, onAction }) {
     }));
 
   if (itemsToRender.length === 0) {
-    return <EmptyState icon="checklist" text="No items in the review queue. Run an analysis to detect violations." />;
+    return <EmptyState icon="checklist" text="No flagged violations found in this legacy view." />;
   }
 
   return (
@@ -1347,7 +1322,7 @@ function ReviewTab({ queue, report, onAction }) {
       </p>
       {!hasQueueItems && (
         <div className="card p-3 text-[10px]" style={{ background: 'rgba(251,191,36,0.08)', borderColor: 'rgba(251,191,36,0.25)', color: 'var(--warning)' }}>
-          Showing violations directly from the latest report because the review queue is currently empty. Re-run analysis to regenerate queue entries.
+          Showing violations directly from the latest report because no stored violation entries are available.
         </div>
       )}
       {itemsToRender.map(item => {
@@ -1407,7 +1382,6 @@ function AuditTab({ trail }) {
     profile: 'analytics',
     analyze: 'science',
     analyze_error: 'error',
-    review_update: 'rate_review',
     execution_gate: 'security',
     mitigate: 'healing',
   };
