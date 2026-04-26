@@ -26,11 +26,11 @@ function ParticleCanvas() {
     let W = canvas.width = window.innerWidth;
     let H = canvas.height = window.innerHeight;
     let mouse = { x: W / 2, y: H / 2 };
-    const N = 200;
+    const N = 150;
     const pts = Array.from({ length: N }, () => ({
       x: Math.random() * W, y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.28, vy: (Math.random() - 0.5) * 0.28,
-      r: Math.random() * 1.4 + 0.4,
+      vx: (Math.random() - 0.5) * 0.15, vy: (Math.random() - 0.5) * 0.15,
+      r: Math.random() * 1.5 + 0.8,
     }));
     const onMove = (e) => { mouse.x = e.clientX; mouse.y = e.clientY; };
     window.addEventListener('mousemove', onMove);
@@ -42,25 +42,25 @@ function ParticleCanvas() {
       pts.forEach(p => {
         const dx = mouse.x - p.x, dy = mouse.y - p.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 120) { p.vx += dx / dist * 0.04; p.vy += dy / dist * 0.04; }
-        p.vx *= 0.97; p.vy *= 0.97;
+        if (dist < 120) { p.vx += dx / dist * 0.02; p.vy += dy / dist * 0.02; }
+        p.vx *= 0.98; p.vy *= 0.98;
         p.x += p.vx; p.y += p.vy;
         if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
         if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(127,165,190,0.16)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
         ctx.fill();
       });
       for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
         const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
         const d = Math.sqrt(dx * dx + dy * dy);
-        if (d < 100) {
+        if (d < 90) {
           ctx.beginPath();
           ctx.moveTo(pts[i].x, pts[i].y);
           ctx.lineTo(pts[j].x, pts[j].y);
-          ctx.strokeStyle = `rgba(127,165,190,${0.035 * (1 - d / 100)})`;
-          ctx.lineWidth = 0.4;
+          ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 * (1 - d / 90)})`;
+          ctx.lineWidth = 0.5;
           ctx.stroke();
         }
       }
@@ -1163,17 +1163,7 @@ function LaunchTab({ tasks, selectedTask, setSelectedTask, onStart, busyAction }
         })}
       </div>
 
-      <button onClick={onStart} disabled={busyAction === 'start'} className="hidden btn-primary w-full py-4 text-sm" style={{ boxShadow: '0 0 30px rgba(127,165,190,0.3)' }}>
-        <M icon="play_arrow" style={{ fontSize: 20 }} /> {busyAction === 'start' ? 'Starting Execution…' : 'Start Secure Execution'}
-      </button>
-      {sel && (
-        <p className="text-center text-xs mt-4" style={{ color: 'var(--outline)' }}>
-          {sel.expected_status === 'completed' && sel.category === 'attack' && 'This attack attempt will be blocked while the workflow still completes safely.'}
-          {sel.expected_status === 'completed' && sel.category !== 'attack' && 'This scenario should complete cleanly under the TokenFlow policy engine.'}
-          {sel.expected_status === 'paused' && 'This scenario will be intercepted and paused for review.'}
-          {sel.expected_status === 'aborted' && 'This scenario will terminate early — the kill-switch control revokes the chain.'}
-        </p>
-      )}
+
     </div>
   );
 }
