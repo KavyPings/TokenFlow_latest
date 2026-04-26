@@ -415,7 +415,7 @@ export default function WorkflowScorePage() {
       <div className="card" style={{ padding: 20, marginTop: 20, display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Selected Workflow</p>
-          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-headline)' }}>{selectedWorkflow ? selectedWorkflow.id.slice(0, 10) : 'â€”'}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-headline)' }}>{selectedWorkflow ? selectedWorkflow.id.slice(0, 10) : '—'}</p>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
           <p style={{ margin: 0, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--on-surface-variant)' }}>Status</p>

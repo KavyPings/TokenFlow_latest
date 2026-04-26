@@ -215,30 +215,6 @@ export default function ScoringPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, flexDirection: 'column', gap: 16 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: '50%',
-          border: '3px solid rgba(127,165,190,0.2)',
-          borderTopColor: 'var(--primary)',
-          animation: 'spin 0.8s linear infinite',
-        }} />
-        <p style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>Computing dataset score...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{ padding: 32, textAlign: 'center' }}>
-        <M icon="error" style={{ fontSize: 48, color: 'var(--error)' }} />
-        <p style={{ color: 'var(--error)', marginTop: 12 }}>Failed to load dataset score data: {error}</p>
-        <button className="btn-primary" style={{ marginTop: 16 }} onClick={loadData}>Retry</button>
-      </div>
-    );
-  }
-
   const datasets = data?.datasets || [];
   const gate = data?.gateStatus?.gate || {};
   const gateMetrics = data?.gateStatus?.metrics || {};
@@ -320,6 +296,30 @@ export default function ScoringPage() {
   ]);
 
   const passedCount = checklist.filter((item) => item.passed).length;
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, flexDirection: 'column', gap: 16 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: '50%',
+          border: '3px solid rgba(127,165,190,0.2)',
+          borderTopColor: 'var(--primary)',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <p style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>Computing dataset score...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 32, textAlign: 'center' }}>
+        <M icon="error" style={{ fontSize: 48, color: 'var(--error)' }} />
+        <p style={{ color: 'var(--error)', marginTop: 12 }}>Failed to load dataset score data: {error}</p>
+        <button className="btn-primary" style={{ marginTop: 16 }} onClick={loadData}>Retry</button>
+      </div>
+    );
+  }
 
   return (
     <motion.div
