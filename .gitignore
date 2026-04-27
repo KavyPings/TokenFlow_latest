@@ -48,3 +48,4 @@ CONTENT_IMPROVEMENTS.md
 build_ppt.js
 export.js
 generate_final_html.py
+git rm -r --cached .codex
