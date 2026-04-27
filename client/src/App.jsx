@@ -4,7 +4,7 @@ import {
   ChevronRight,
   RefreshCcw,
 } from 'lucide-react';
-import { api, getWebSocketUrl } from './api.js';
+import { api, API_BASE_URL, getWebSocketUrl } from './api.js';
 import LandingPage from './pages/LandingPage.jsx';
 import IncidentPage from './pages/IncidentPage.jsx';
 import FairnessPage from './pages/FairnessPage.jsx';
@@ -1184,7 +1184,8 @@ function UploadedWorkflowsTab({ onRunUploadedWorkflow }) {
     try {
       const text = await file.text();
       const json = JSON.parse(text);
-      const res = await fetch('/api/workflows/upload', {
+      const uploadUrl = `${API_BASE_URL}/api/workflows/upload`;
+      const res = await fetch(uploadUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ definition: json }),

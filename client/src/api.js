@@ -1,6 +1,6 @@
 // In local development, keep VITE_API_BASE_URL empty so Vite's /api proxy handles requests.
 // In production split deployments, set VITE_API_BASE_URL to your backend URL.
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 function toUrl(path) {
   return `${API_BASE_URL}${path}`;
