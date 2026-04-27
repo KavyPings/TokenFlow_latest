@@ -2,6 +2,10 @@
 
 TokenFlow OS is a full-stack platform for securing and governing AI-driven decision workflows. It combines zero-trust execution controls with fairness auditing so teams can prove that automated systems are both safe and accountable.
 
+## Inspiration
+
+TokenFlow was inspired by the Google-related incident highlighted on our project website, which reinforced a core problem in modern AI systems: powerful automated workflows can fail when execution controls and governance safeguards are not enforced together. This project was built to address that gap by combining strict execution boundaries with fairness and compliance checks in one platform.
+
 ## What TokenFlow Solves
 
 Modern agentic systems often fail in two places:
