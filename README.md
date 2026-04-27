@@ -1,92 +1,180 @@
 # TokenFlow OS
 
-**TokenFlow** is a comprehensive, open-source operating system designed to secure and monitor AI-driven automated decision workflows. Inspired by the need for zero-trust security in systems capable of autonomous execution, TokenFlow acts as an interception layer between AI intent and execution.
+TokenFlow OS is a full-stack platform for securing and governing AI-driven decision workflows. It combines zero-trust execution controls with fairness auditing so teams can prove that automated systems are both safe and accountable.
 
-TokenFlow introduces a strict, token-gated execution engine that validates every step of a workflow. Coupled with a powerful fairness audit platform, TokenFlow not only prevents malicious actions (like scope escalation or unauthorized retrieval) but also mitigates demographic bias in the automated decisions themselves.
+## What TokenFlow Solves
 
-## Features & Architecture
+Modern agentic systems often fail in two places:
 
-### 🛡️ Token-Gated Security Engine
-- **Step-by-Step Authorization:** Rather than giving an AI agent blanket access to a database or API, TokenFlow issues cryptographic, single-use tokens scoped strictly to specific actions, services, and resources. 
-- **The Token Chain:** Creates an immutable, visual ledger. You can trace every consumed token (green), minted but unused token (blue), or blocked/flagged token (red).
-- **Incident Interception:** Automatically halts execution if an agent attempts replay attacks, scope escalation, or accesses unauthorized services, placing the workflow in a quarantine "Review Queue".
+- Over-permissioned execution, where one compromised step can access data or services outside intended scope.
+- Fairness blind spots, where decisions may systematically disadvantage protected groups.
 
-### ⚖️ Fairness & Compliance Engine
-- **Bias Detection Matrix:** A dedicated calculation engine to detect demographic bias in decision-making models. Calculates enterprise-grade statistics:
-  - Statistical Parity Difference (SPD)
-  - Disparate Impact Ratio (DIR)
-  - Equal Opportunity Difference (EOD)
-  - Average Odds Difference (AOD)
-- **Threshold Mitigation Adjustment:** Features built-in mitigation logic that rectifies biased datasets by adjusting approval thresholds based on demographic group.
-- **Dynamic Grading System:** Calculates a robust Compliance Score based on test coverage, overall assessed risk levels, and operational queue health.
+TokenFlow addresses both in one control plane:
 
-### 🧠 Gemini AI Reporting
-- Integrates with the **Gemini AI SDK** to generate executive-level narrative reports. Rather than drowning users in complex statistical matrices, the system generates plain-English contextual explanations of workflow biases.
+- Security at execution time through scoped, single-use token gating.
+- Governance at decision time through fairness metrics, mitigation, and reporting.
 
-### 🏢 Enterprise Extensibility
-- **Custom Workflow Uploads:** Beyond our standard mock execution scenarios, the system safely ingests, validates, and runs custom JSON workflow definitions through the token-chain.
-- **Enterprise Combined Audits:** Allows organizations to upload a dataset and workflow mapping synchronously to lock down both the data pipeline and the operational scope in a single cryptographic report.
+## Core Features
 
----
+### Workflow Security Engine
 
-## Technology Stack
+- Single-use, scoped token minting and consumption per workflow step.
+- Replay-resistance and policy checks to block unauthorized action attempts.
+- Real-time token chain visibility for minted, consumed, blocked, or revoked tokens.
+- Kill switch and review queue behavior for suspicious or policy-violating flows.
 
-TokenFlow leverages an entirely local, deterministic backend ensuring strict state retention.
+### Mission Monitoring
 
-- **Frontend:** React + Vite, Framer Motion for visualizations, Vanilla CSS (Tokenized Surface Container System)
-- **Backend:** Node.js, Express.js
-- **Real-time Event Bridge:** WebSockets (ws)
-- **Database:** `better-sqlite3` (Local file-based system `tokenflow.db`)
-- **Validation:** Zod schemas
-- **AI Integrations:** `@google/genai`
+- Dashboard for mission execution, risk posture, and system health visibility.
+- Review queue and workflow logs to investigate blocked or flagged runs.
+- WebSocket-powered live updates across workflow state and token events.
 
----
+### Fairness and Governance
 
-## Installation & Setup
+- Dataset upload and column mapping for target and protected attributes.
+- Fairness metrics including SPD, DIR, EOD, and AOD.
+- Risk-level evaluation and fairness gate state visibility.
+- Mitigation workflow to produce adjusted outputs and impacted-case analysis.
 
-1. **Clone the repository:**
+### Reporting and Explainability
+
+- Deterministic fairness summaries for consistent baseline reporting.
+- Optional Gemini narrative generation for executive-readable analysis.
+- Compliance and export endpoints to package outcomes for review.
+
+### Enterprise Audit Flow
+
+- Combined workflow plus dataset assessment path for end-to-end audits.
+- Context-aware analysis and report generation for governance workflows.
+
+## Product Areas in the UI
+
+- `Workflow`: Launch mock/custom workflows, run missions, inspect token chains.
+- `Monitor`: Operational status, incidents, and queue management.
+- `Governance`: Fairness audits, mitigation, report generation, audit trails.
+- `Enterprise`: Combined security and fairness audit flow for formal reviews.
+
+## Tech Stack
+
+- Frontend: React, Vite, Framer Motion, Lucide React
+- Backend: Node.js, Express
+- Realtime: WebSockets (`ws`)
+- Data: SQLite (`better-sqlite3`) with local file persistence
+- Validation and schemas: Zod
+- AI integration: Google Gemini SDK (`@google/generative-ai`)
+
+## Repository Structure
+
+```text
+.
+|-- client/                 # React + Vite frontend
+|-- server/                 # Express APIs, engines, governance services
+|-- render.yaml             # Render web service blueprint
+|-- vercel.json             # Vercel frontend build config
+|-- .env.example            # Complete environment variable template
+`-- package.json            # Workspace scripts for full stack
+```
+
+## Prerequisites
+
+- Node.js 18 or newer
+- npm 9 or newer
+
+## Setup and Installation
+
+1. Clone the repository and open it:
    ```bash
-   git clone https://github.com/yourusername/TokenFlow.git
-   cd TokenFlow
+   git clone <your-repo-url>
+   cd TokenFlow_latest
    ```
-
-2. **Environment Variables:**
-   Create a `.env` file in the `server/` directory and structure it as found in `.env.example`:
+2. Install all workspace dependencies from the root:
    ```bash
-   GEMINI_API_KEY=your_gemini_api_key_here
-   PORT=10000
-   ```
-
-3. **Install Dependencies:**
-   TokenFlow uses a standard Node setup. You'll need to install dependencies for both the frontend and backend.
-   *(We recommend running split terminals for development).*
-   
-   **Frontend:**
-   ```bash
-   cd client
    npm install
-   npm run dev
    ```
+3. Create your runtime environment file from the template:
+   - Copy `.env.example` to `.env` (root-level for this project setup).
+   - Fill in required secrets and values.
 
-   **Backend:**
-   ```bash
-   cd server
-   npm install
-   npm run dev
-   ```
+Important: `.env.example` is the source of truth for required variables, defaults, and deployment notes. Keep it updated whenever config changes.
 
----
+## Environment Variables
 
-## Deployment Ready
+Use `.env.example` directly as your reference for:
 
-TokenFlow includes both `vercel.json` (for the React Client) and `render.yaml` (for the Node Backend Service) configurations to allow for immediate deployment.
+- Frontend runtime variables (for Vite and browser-safe config)
+- Auth0 integration values
+- Backend service configuration (port, DB path, CORS origin)
+- Optional provider keys (Gemini, OpenAI, SendGrid)
+- Feature flags and fairness gate mode
 
-1. **Backend (Render):** The backend binds strictly to `0.0.0.0` to permit Render’s proxying, and enables WebSocket traffic dynamically. It utilizes a persistent disk volume to ensure that the SQLite database (`tokenflow.db`) and user uploads are preserved across instance restarts.
-2. **Frontend (Vercel):** All frontend API and WebSocket calls use deterministic paths targeting your deployed backend URL.
+Do not commit your real `.env` file.
 
-To deploy in production, replace the connection references in `client/src/services/api.js` with your production API URL, or set your environment variables accordingly.
+## Running the Project Locally
 
----
+From the repository root:
+
+```bash
+npm run dev
+```
+
+This starts:
+
+- Backend on `http://localhost:8000` (default)
+- Frontend on Vite dev server (typically `http://localhost:5173`)
+
+Useful scripts:
+
+- `npm run dev` - run backend and frontend together
+- `npm run dev:server` - run backend only
+- `npm run dev:client` - run frontend only
+- `npm run build` - build frontend bundle
+- `npm run start` - start production backend entrypoint
+
+## API Surface (High-Level)
+
+TokenFlow exposes modular APIs under `/api`, including:
+
+- `/api/workflows` for workflow upload, execution, and lifecycle actions
+- `/api/tokens` for token audit and chain inspection
+- `/api/fairness` for dataset audit, mitigation, and reports
+- `/api/enterprise` for combined workflow + fairness audits
+- `/api/dashboard`, `/api/llm`, `/api/redteam`, `/api/replay`, `/api/report`
+
+Health check:
+
+- `GET /api/health`
+
+## Deployment
+
+### Frontend on Vercel, Backend on Render
+
+Frontend (`Vercel`):
+
+- Framework: Vite
+- Root directory: `client`
+- Build command: `npm run build`
+- Output directory: `dist`
+- Set `VITE_API_BASE_URL` to your Render backend URL
+
+Backend (`Render`):
+
+- Use `render.yaml` blueprint or manual Web Service setup
+- Build command: `npm install && npm run build`
+- Start command: `npm run start`
+- Ensure production env vars are configured from `.env.example`
+- Set `FRONTEND_ORIGIN` to your Vercel domain
+
+## Security and Governance Notes
+
+- TokenFlow is built around least-privilege, step-scoped authorization.
+- Production deployment should explicitly configure CORS origins and auth secrets.
+- Keep `USE_AUTH0`, AI provider keys, and fairness gate mode aligned with environment goals.
+- Rotate secrets before any public demo or submission.
+
+## Documentation
+
+- `USER_GUIDE.md` for product usage walkthrough
+- `.env.example` for complete configuration reference
 
 ## License
 

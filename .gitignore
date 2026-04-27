@@ -16,3 +16,35 @@ stitchdes.txt
 design.txt
 implementation_plan.md.resolved
 .vercel/
+.workflow.json
+
+# Build/test artifacts
+coverage/
+*.tsbuildinfo
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local env overrides
+*.local
+
+# Python cache (used by helper scripts)
+__pycache__/
+.venv/
+venv/
+
+# IDE metadata
+.idea/
+
+# Generated presentation/export assets
+exports/
+final_html/
+stitch_tokenflow_os_pitch_deck/
+Final_Solution_Challenge_Deck.pptx
+[[]EXT[]] Solution Challenge 2026 - Prototype PPT Template.pptx
+CONTENT_IMPROVEMENTS.md
+build_ppt.js
+export.js
+generate_final_html.py

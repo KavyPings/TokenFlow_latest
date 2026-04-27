@@ -1,11 +1,14 @@
 {
-  "decision": "approved",
+  "decision": "approved_with_conditions",
   "amount_approved": 75000,
-  "interest_rate": 6.4,
-  "conditions": [],
+  "interest_rate": 8.9,
+  "conditions": [
+    "Proof of stable income required",
+    "Co-signer recommended"
+  ],
   "decline_reasons": [],
-  "decision_letter": "Dear David Chen,\n\nThank you for your loan application. After careful review, we have approved your request for $75,000 at 6.4% APR.\n\nYour TokenFlow-verified decision record is available in your secure portal.",
-  "decided_at": "2026-04-25T19:11:41.042Z",
+  "decision_letter": "Dear David Chen,\n\nThank you for your loan application. After careful review, we have approved your request for $75,000 at 8.9% APR.\n\nYour TokenFlow-verified decision record is available in your secure portal.",
+  "decided_at": "2026-04-27T07:50:39.914Z",
   "recommendation": "approve",
   "score": null
 }
